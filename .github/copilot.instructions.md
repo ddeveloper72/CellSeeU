@@ -648,6 +648,214 @@ python app.py
 - ❌ **Illegal**: Decrypting communications, intercepting data, IMSI catching
 - Always display disclaimers about intended educational/diagnostic use
 
+### 9. Unit Testing - **MANDATORY**
+- **Write tests FIRST** - Test-Driven Development (TDD) approach preferred
+- **Test coverage goal**: Minimum 80% code coverage for critical paths
+- **Test all functions** before considering them complete
+- Use `pytest` as the primary testing framework
+
+#### Testing Structure
+```
+cell_see_u/
+├── tests/
+│   ├── __init__.py
+│   ├── test_tower_detector.py      # Android tower detection tests
+│   ├── test_tower_classifier.py    # Terrestrial vs NTN tests
+│   ├── test_geolocation.py         # Location service tests
+│   ├── test_api_routes.py          # Flask API endpoint tests
+│   ├── test_tower_mapper.py        # OpenCellID integration tests
+│   └── fixtures/
+│       ├── mock_cell_data.json     # Mock TelephonyManager responses
+│       └── mock_tower_data.json    # Sample tower data
+```
+
+#### Testing Best Practices
+```python
+# Good: Descriptive test names that explain intent
+def test_classify_tower_returns_ntn_for_5g_with_satellite_plmn():
+    """
+    Verify that 5G towers with known satellite PLMN codes
+    are correctly classified as NON_TERRESTRIAL_SATELLITE.
+    
+    This ensures we can distinguish Starlink-like satellite
+    networks from traditional terrestrial 5G towers.
+    """
+    # Arrange - Setup test data
+    cell_info = create_mock_5g_cell(mcc=901, mnc=88)  # Satellite PLMN
+    
+    # Act - Execute function
+    result = classify_tower_type(cell_info)
+    
+    # Assert - Verify outcome
+    assert result == "NON_TERRESTRIAL_SATELLITE"
+    
+# Bad: Vague test name, no documentation
+def test_tower():
+    assert classify_tower_type(data) == "NTN"
+```
+
+#### Test Categories
+- **Unit Tests**: Individual functions in isolation
+- **Integration Tests**: Multiple components working together
+- **API Tests**: Flask endpoints with mocked services
+- **Security Tests**: Input validation, SQL injection, XSS prevention
+- **Performance Tests**: Response times under load
+
+#### Running Tests
+```bash
+# Run all tests
+pytest
+
+# Run with coverage report
+pytest --cov=src --cov-report=html --cov-report=term
+
+# Run specific test file
+pytest tests/test_tower_classifier.py -v
+
+# Run tests matching pattern
+pytest -k "test_ntn" -v
+
+# Run with detailed output
+pytest -vv --tb=short
+```
+
+#### Test Requirements
+- **Every new function** must have corresponding tests
+- **Every bug fix** must include a regression test
+- **API endpoints** must have tests for success and error cases
+- **Edge cases** must be tested (null inputs, empty lists, invalid data)
+- **Mock external dependencies** (OpenCellID API, Android TelephonyManager)
+
+### 10. Security & Penetration Testing - **CRITICAL**
+
+#### Security Testing Throughout Development
+- **Test security continuously**, not just at the end
+- **Assume all input is malicious** until validated
+- **Follow OWASP Top 10** security guidelines
+- **Pass penetration testing** without losing functionality
+
+#### Security Checklist (Pre-Deployment)
+
+**Input Validation**
+- [ ] All user inputs sanitized (XSS prevention)
+- [ ] SQL injection protection (use parameterized queries)
+- [ ] Path traversal prevention (validate file paths)
+- [ ] Command injection prevention (never use `eval()`, `exec()`)
+- [ ] API input validation (type checking, range limits)
+
+**Authentication & Authorization**
+- [ ] Strong session management (secure cookies, CSRF tokens)
+- [ ] Password requirements enforced (if applicable)
+- [ ] Rate limiting on API endpoints (prevent DoS)
+- [ ] API key validation with proper error messages (don't leak info)
+
+**Data Protection**
+- [ ] All secrets in .env (never hardcoded)
+- [ ] HTTPS enforced in production (no plain HTTP)
+- [ ] Sensitive data encrypted at rest (if stored)
+- [ ] Location data not logged or transmitted without consent
+- [ ] No API keys in client-side JavaScript
+
+**Flask Security Headers**
+```python
+# app.py - Add security headers
+from flask import Flask
+from flask_talisman import Talisman
+
+app = Flask(__name__)
+
+# Enforce HTTPS and security headers
+Talisman(app, 
+    content_security_policy={
+        'default-src': "'self'",
+        'script-src': ["'self'", 'maps.googleapis.com'],
+        'style-src': ["'self'", "'unsafe-inline'"],
+        'img-src': ["'self'", 'data:', 'maps.googleapis.com']
+    },
+    force_https=True
+)
+
+# Additional security headers
+@app.after_request
+def set_security_headers(response):
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    return response
+```
+
+#### Penetration Testing Preparation
+```bash
+# Install security testing tools
+pip install bandit safety flask-talisman
+
+# Run static analysis security scanner
+bandit -r src/ -f html -o security-report.html
+
+# Check for known vulnerabilities in dependencies
+safety check --json
+
+# Test API endpoints with OWASP ZAP or Burp Suite
+# Manual testing: Try SQL injection, XSS, path traversal
+```
+
+#### Security Testing Examples
+```python
+# tests/test_security.py
+def test_api_prevents_sql_injection():
+    """Verify SQL injection attempts are blocked"""
+    malicious_input = "'; DROP TABLE towers; --"
+    response = client.get(f'/api/tower/{malicious_input}')
+    assert response.status_code == 400
+    assert "invalid" in response.json['error'].lower()
+
+def test_api_prevents_xss():
+    """Verify XSS payloads are sanitized"""
+    xss_payload = "<script>alert('XSS')</script>"
+    response = client.post('/api/tower', json={'name': xss_payload})
+    # Should escape HTML entities
+    assert '&lt;script&gt;' in response.text or response.status_code == 400
+
+def test_api_rate_limiting():
+    """Verify rate limiting prevents DoS attacks"""
+    # Make 100 rapid requests
+    responses = [client.get('/api/towers') for _ in range(100)]
+    # Should see 429 Too Many Requests
+    assert any(r.status_code == 429 for r in responses)
+
+def test_no_secrets_in_response():
+    """Verify API keys never leak in responses"""
+    response = client.get('/api/config')
+    response_text = response.text.lower()
+    assert 'api_key' not in response_text
+    assert 'secret' not in response_text
+    assert 'password' not in response_text
+```
+
+#### Security Without Losing Functionality
+- **Validate, don't reject blindly** - Allow valid data through
+- **Provide clear error messages** - Don't just return "Access Denied"
+- **Rate limiting** - Set reasonable limits (e.g., 100 requests/min)
+- **Sanitize output** - Escape HTML but preserve data integrity
+- **Log security events** - Track failed attempts without exposing internals
+
+#### Common Security Pitfalls to Avoid
+❌ **Don't**: `eval(user_input)` or `exec(user_code)`  
+✅ **Do**: Use JSON parsing with schema validation
+
+❌ **Don't**: `f"SELECT * FROM towers WHERE id = {user_id}"`  
+✅ **Do**: Use parameterized queries or ORMs
+
+❌ **Don't**: Return stack traces to users  
+✅ **Do**: Log errors server-side, return generic messages
+
+❌ **Don't**: Store API keys in JavaScript files  
+✅ **Do**: Call backend APIs that handle keys server-side
+
+❌ **Don't**: Trust client-side validation alone  
+✅ **Do**: Always validate on the server
+
 ## Deployment Process
 
 ### Building with Buildozer
