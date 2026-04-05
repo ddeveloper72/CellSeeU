@@ -202,14 +202,11 @@ function onLocationSuccess(position) {
 
 /**
  * Handle geolocation errors
-        map.setView([currentLocation.latitude, currentLocation.longitude], CONFIG.mapZoom);
-    }
-}
-
-/**
- * Handle geolocation errors
  * 
+ * Displays user-friendly error messages for location failures
+ * and implements retry logic for temporary issues (timeout, unavailable).
  * 
+ * @param {GeolocationPositionError} error - Geolocation error object
  * @note Implements retry logic for timeout errors
  */
 function onLocationError(error) {
@@ -567,6 +564,7 @@ function updateTowerMarkers(towers) {
         );
         map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
     }
+}
 
 /**
  * Get color for signal strength visualization
