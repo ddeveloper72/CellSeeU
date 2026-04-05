@@ -127,15 +127,15 @@ function requestLocation() {
         updateLocationCard('Geolocation not available in this browser');
         return;
     }
-    
+
     // Clear any existing watch to prevent conflicts
     if (locationWatchId !== null) {
         navigator.geolocation.clearWatch(locationWatchId);
     }
-    
+
     // Show "acquiring location" message
     updateLocationCard('🔍 Acquiring GPS location...');
-    
+
     // Get initial position with longer timeout for first GPS fix
     navigator.geolocation.getCurrentPosition(
         onLocationSuccess,
@@ -146,7 +146,7 @@ function requestLocation() {
             maximumAge: 0     // Force fresh position, no cache
         }
     );
-    
+
     // Then start continuous tracking with shorter timeout
     locationWatchId = navigator.geolocation.watchPosition(
         onLocationSuccess,
@@ -172,7 +172,7 @@ function requestLocation() {
 function onLocationSuccess(position) {
     const accuracy = Math.round(position.coords.accuracy);
     console.log(`📍 Location acquired (±${accuracy}m accuracy)`);
-    
+
     currentLocation = {
         latitude: position.coords.latitude,
         longitude: position.coords.longitude,
@@ -181,11 +181,11 @@ function onLocationSuccess(position) {
         speed: position.coords.speed,
         timestamp: new Date().toISOString()
     };
-    
+
     // Update UI
     updateLocationCard(currentLocation);
     updateDeviceMarker(currentLocation);
-    
+
     // Center map on device location (first fix only)
     // After that, let user control the map
     if (map && isFirstLocationFix) {
@@ -193,7 +193,7 @@ function onLocationSuccess(position) {
         isFirstLocationFix = false;
         console.log('📍 Map centered on your location');
     }
-    
+
     // Log accuracy warning if GPS is not precise
     if (accuracy > 100) {
         console.warn(`⚠️ Location accuracy is low (±${accuracy}m). Move to area with better GPS signal.`);
@@ -214,10 +214,10 @@ function onLocationSuccess(position) {
  */
 function onLocationError(error) {
     console.error('❌ Location error:', error.message);
-    
+
     let message = 'Unable to get location';
     let shouldRetry = false;
-    
+
     switch (error.code) {
         case error.PERMISSION_DENIED:
             message = 'Location permission denied. Please enable location access in your browser settings.';
@@ -231,9 +231,9 @@ function onLocationError(error) {
             shouldRetry = true;
             break;
     }
-    
+
     updateLocationCard(message);
-    
+
     // Retry after delay for timeout/unavailable errors
     // GPS often needs more time for first fix outdoors
     if (shouldRetry) {
@@ -452,7 +452,7 @@ function setupMapControls() {
             }
         });
     }
-    
+
     // Refresh towers
     const btnRefresh = document.getElementById('btn-refresh-towers');
     if (btnRefresh) {
@@ -535,12 +535,13 @@ function updateTowerMarkers(towers) {
 
         const signalColor = getSignalColor(tower.signal_strength);
         const icon = tower.tower_type === 'NON_TERRESTRIAL_SATELLITE' ? '🛰️' : '🗼';
+        const registeredClass = tower.registered ? ' registered' : '';
 
         const marker = L.marker([tower.latitude, tower.longitude], {
             icon: L.divIcon({
-                className: 'tower-marker',
-                html: `<div style="background: ${signalColor}; font-size: 20px;">${icon}</div>`,
-                iconSize: [32, 32]
+                className: `tower-marker${registeredClass}`,
+                html: `<div style="background: ${signalColor};">${icon}</div>`,
+                iconSize: [40, 40]
             })
         }).addTo(map);
 
@@ -549,13 +550,23 @@ function updateTowerMarkers(towers) {
             <strong>${icon} ${tower.network_type}</strong><br>
             Carrier: ${escapeHtml(tower.carrier || `${tower.mcc}-${tower.mnc}`)}<br>
             Cell ID: ${tower.cell_id}<br>
-            Signal: ${tower.signal_strength} dBm<br>
+            Signal: ${tower.signal_strength} dBm (${tower.signal_bars}📶)<br>
+            ${tower.distance_meters ? `Distance: ${Math.round(tower.distance_meters)}m<br>` : ''}
             ${tower.registered ? '✅ Connected' : ''}
         `);
 
         towerMarkers.push(marker);
     });
-}
+    
+   console.log(`🗺️ Added ${towerMarkers.length} tower markers to map`);
+    
+    // Auto-fit map bounds to show all towers (if we have any)
+    if (towerMarkers.length > 0) {
+        const bounds = L.latLngBounds(
+            towerMarkers.map(marker => marker.getLatLng())
+        );
+        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
+    }
 
 /**
  * Get color for signal strength visualization
