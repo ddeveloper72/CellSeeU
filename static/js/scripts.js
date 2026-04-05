@@ -24,6 +24,8 @@ let deviceMarker = null;
 let towerMarkers = [];
 let currentLocation = null;
 let updateInterval = null;
+let locationWatchId = null;
+let isFirstLocationFix = true;
 
 /**
  * Initialize the dashboard page
@@ -33,19 +35,19 @@ let updateInterval = null;
  */
 function initializeDashboard() {
     console.log('🗼 Initializing CellSeeU Dashboard');
-    
+
     // Request location permission and start tracking
     requestLocation();
-    
+
     // Setup mini map
     initializeMiniMap();
-    
+
     // Fetch initial tower data
     fetchTowers();
-    
+
     // Setup periodic updates
     startPeriodicUpdates();
-    
+
     // Event listeners
     setupEventListeners();
 }
@@ -58,10 +60,10 @@ function initializeDashboard() {
  */
 function initializeFullMap() {
     console.log('🗺️ Initializing Full Map');
-    
+
     // Create map centered on default location
     map = L.map('full-map').setView(CONFIG.mapCenter, CONFIG.mapZoom);
-    
+
     // Add OpenStreetMap tiles
     // Using CDN tiles with proper attribution
     L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
@@ -69,14 +71,14 @@ function initializeFullMap() {
         subdomains: 'abcd',
         maxZoom: 19
     }).addTo(map);
-    
+
     // Request location and fetch towers
     requestLocation();
     fetchTowers();
-    
+
     // Setup event listeners
     setupMapControls();
-    
+
     // Start periodic updates
     startPeriodicUpdates();
 }
@@ -90,7 +92,7 @@ function initializeFullMap() {
 function initializeMiniMap() {
     const miniMapElement = document.getElementById('mini-map');
     if (!miniMapElement) return;
-    
+
     // Create mini map
     map = L.map('mini-map', {
         zoomControl: false,
@@ -100,7 +102,7 @@ function initializeMiniMap() {
         doubleClickZoom: false,
         touchZoom: false
     }).setView(CONFIG.mapCenter, CONFIG.mapZoom);
-    
+
     // Add tiles
     L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
         subdomains: 'abcd',
@@ -113,6 +115,11 @@ function initializeMiniMap() {
  * 
  * Uses browser Geolocation API to track device position.
  * Updates are sent to backend for distance calculations.
+ * 
+ * Why these settings:
+ * - enableHighAccuracy: true - Use GPS instead of WiFi/cell triangulation
+ * - timeout: 30000 - GPS needs time for first fix (up to 30s)
+ * - maximumAge: 0 - Always get fresh position, never use cache
  */
 function requestLocation() {
     if (!('geolocation' in navigator)) {
@@ -121,28 +128,26 @@ function requestLocation() {
         return;
     }
     
-    // Request high-accuracy position
-    navigator.geolocation.watchPosition(
+    // Clear any existing watch to prevent conflicts
+    if (locationWatchId !== null) {
+        navigator.geolocation.clearWatch(locationWatchId);
+    }
+    
+    // Show "acquiring location" message
+    updateLocationCard('🔍 Acquiring GPS location...');
+    
+    // Get initial position with longer timeout for first GPS fix
+    navigator.geolocation.getCurrentPosition(
         onLocationSuccess,
         onLocationError,
         {
             enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 5000
-        }
-    );
-}
-
-/**
- * Handle successful geolocation
  * 
- * Updates the UI with current location and repositions
- * the map to center on the device.
- * 
- * @param {Position} position - Geolocation position object
+ * @note Only centers map on first position to avoid jarring user experience
  */
 function onLocationSuccess(position) {
-    console.log('📍 Location acquired');
+    const accuracy = Math.round(position.coords.accuracy);
+    console.log(`📍 Location acquired (±${accuracy}m accuracy)`);
     
     currentLocation = {
         latitude: position.coords.latitude,
@@ -157,6 +162,26 @@ function onLocationSuccess(position) {
     updateLocationCard(currentLocation);
     updateDeviceMarker(currentLocation);
     
+    // Center map on device location (first fix only)
+    // After that, let user control the map
+    if (map && isFirstLocationFix) {
+        map.setView([currentLocation.latitude, currentLocation.longitude], 15);
+        isFirstLocationFix = false;
+        console.log('📍 Map centered on your location');
+    }
+    
+    // Log accuracy warning if GPS is not precise
+    if (accuracy > 100) {
+        console.warn(`⚠️ Location accuracy is low (±${accuracy}m). Move to area with better GPS signal.`);
+        altitude: position.coords.altitude,
+        speed: position.coords.speed,
+        timestamp: new Date().toISOString()
+    };
+
+    // Update UI
+    updateLocationCard(currentLocation);
+    updateDeviceMarker(currentLocation);
+
     // Center map on device location (first time only)
     if (map && !deviceMarker) {
         map.setView([currentLocation.latitude, currentLocation.longitude], CONFIG.mapZoom);
@@ -166,31 +191,40 @@ function onLocationSuccess(position) {
 /**
  * Handle geolocation errors
  * 
- * Displays user-friendly error messages based on error type.
- * Does not expose sensitive technical details.
  * 
- * @param {PositionError} error - Geolocation error object
+ * @note Implements retry logic for timeout errors
  */
 function onLocationError(error) {
     console.error('❌ Location error:', error.message);
     
     let message = 'Unable to get location';
+    let shouldRetry = false;
+    
     switch (error.code) {
         case error.PERMISSION_DENIED:
-            message = 'Location permission denied. Please enable location access.';
+            message = 'Location permission denied. Please enable location access in your browser settings.';
             break;
         case error.POSITION_UNAVAILABLE:
-            message = 'Location unavailable. Check your device settings.';
+            message = 'Location unavailable. Make sure GPS is enabled and you\'re not indoors.';
+            shouldRetry = true;
             break;
         case error.TIMEOUT:
-            message = 'Location request timed out. Retrying...';
+            message = 'GPS is taking longer than expected. Move to an area with clear sky view.';
+            shouldRetry = true;
             break;
     }
     
     updateLocationCard(message);
-}
-
-/**
+    
+    // Retry after delay for timeout/unavailable errors
+    // GPS often needs more time for first fix outdoors
+    if (shouldRetry) {
+        console.log('🔄 Will retry location in 5 seconds...');
+        setTimeout(() => {
+            console.log('🔄 Retrying location request...');
+            requestLocation();
+        }, 5000);
+    }
  * Fetch tower data from API
  * 
  * Retrieves list of visible cell towers from backend.
@@ -199,21 +233,21 @@ function onLocationError(error) {
 async function fetchTowers() {
     try {
         const response = await fetch(`${CONFIG.apiBaseUrl}/towers`);
-        
+
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
-        
+
         const data = await response.json();
         const towers = data.towers || [];
-        
+
         console.log(`📡 Fetched ${towers.length} towers`);
-        
+
         // Update UI
         updateTowerList(towers);
         updateTowerMarkers(towers);
         updateStats(towers);
-        
+
     } catch (error) {
         console.error('❌ Error fetching towers:', error);
         // Don't expose error details to user
@@ -232,19 +266,19 @@ async function fetchTowers() {
 function updateLocationCard(location) {
     const card = document.getElementById('location-card');
     if (!card) return;
-    
+
     if (typeof location === 'string') {
         // Error message
         card.innerHTML = `<div class="location-error">${escapeHtml(location)}</div>`;
         return;
     }
-    
+
     // Format location data
     // NOTE: Coordinates shown with limited precision for privacy
     const lat = location.latitude.toFixed(4);
     const lon = location.longitude.toFixed(4);
     const accuracy = Math.round(location.accuracy);
-    
+
     card.innerHTML = `
         <div class="location-info">
             <p><strong>Coordinates:</strong> ${lat}, ${lon}</p>
@@ -253,7 +287,7 @@ function updateLocationCard(location) {
             ${location.speed ? `<p><strong>Speed:</strong> ${Math.round(location.speed * 3.6)} km/h</p>` : ''}
         </div>
     `;
-    
+
     // Update stat card
     const accuracyStat = document.getElementById('location-accuracy');
     if (accuracyStat) {
@@ -272,18 +306,18 @@ function updateLocationCard(location) {
 function updateTowerList(towers) {
     const list = document.getElementById('tower-list');
     if (!list) return;
-    
+
     if (!towers || towers.length === 0) {
         list.innerHTML = '<div class="loading">No towers detected</div>';
         return;
     }
-    
+
     // Sort: connected first, then by signal strength
     towers.sort((a, b) => {
         if (a.registered !== b.registered) return a.registered ? -1 : 1;
         return b.signal_strength - a.signal_strength;
     });
-    
+
     // Render tower cards
     list.innerHTML = towers.map(tower => createTowerCard(tower)).join('');
 }
@@ -301,10 +335,10 @@ function createTowerCard(tower) {
     const typeIcon = tower.tower_type === 'NON_TERRESTRIAL_SATELLITE' ? '🛰️' : '🗼';
     const typeClass = tower.tower_type === 'NON_TERRESTRIAL_SATELLITE' ? 'satellite' : 'terrestrial';
     const connectedBadge = tower.registered ? '<span class="badge">✅ Connected</span>' : '';
-    
+
     // Signal strength bar visual
     const signalBars = '📶'.repeat(Math.min(tower.signal_bars || 0, 5));
-    
+
     return `
         <div class="tower-card ${typeClass}" data-cell-id="${tower.cell_id}">
             <div class="tower-header">
@@ -336,16 +370,16 @@ function updateStats(towers) {
     const totalTowers = document.getElementById('total-towers');
     const connectedTower = document.getElementById('connected-tower');
     const satelliteCount = document.getElementById('satellite-count');
-    
+
     if (totalTowers) {
         totalTowers.textContent = towers.length;
     }
-    
+
     if (connectedTower) {
         const connected = towers.find(t => t.registered);
         connectedTower.textContent = connected ? connected.network_type : '-';
     }
-    
+
     if (satelliteCount) {
         const satellites = towers.filter(t => t.tower_type === 'NON_TERRESTRIAL_SATELLITE');
         satelliteCount.textContent = satellites.length;
@@ -359,9 +393,12 @@ function setupEventListeners() {
     // Refresh location button
     const btnRefreshLocation = document.getElementById('btn-refresh-location');
     if (btnRefreshLocation) {
-        btnRefreshLocation.addEventListener('click', requestLocation);
+        btnRefreshLocation.addEventListener('click', () => {
+            isFirstLocationFix = true;  // Allow re-centering
+            requestLocation();
+        });
     }
-    
+
     // Filter buttons
     const filterButtons = document.querySelectorAll('.filter-btn');
     filterButtons.forEach(btn => {
@@ -369,26 +406,27 @@ function setupEventListeners() {
             // Update active state
             filterButtons.forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
-            
+
             // Apply filter (TODO: implement filtering logic)
             const filter = btn.dataset.filter;
             console.log(`Filter: ${filter}`);
         });
     });
 }
-
-/**
- * Setup map control buttons
- */
-function setupMapControls() {
-    // Center on location
-    const btnCenter = document.getElementById('btn-center-location');
-    if (btnCenter && map && currentLocation) {
-        btnCenter.addEventListener('click', () => {
-            map.setView([currentLocation.latitude, currentLocation.longitude], CONFIG.mapZoom);
-        });
+    if (btnRefresh) {
+        btnRefresh.addEventListener('click', fetchTowers);
     }
     
+    // Refresh location button on dashboard
+    const btnRefreshLocation = document.getElementById('btn-refresh-location');
+    if (btnRefreshLocation) {
+        btnRefreshLocation.addEventListener('click', () => {
+            isFirstLocationFix = true;  // Allow re-centering
+            requestLocation();
+        });         map.setView([currentLocation.latitude, currentLocation.longitude], CONFIG.mapZoom);
+        });
+    }
+
     // Refresh towers
     const btnRefresh = document.getElementById('btn-refresh-towers');
     if (btnRefresh) {
@@ -406,7 +444,7 @@ function startPeriodicUpdates() {
     if (updateInterval) {
         clearInterval(updateInterval);
     }
-    
+
     updateInterval = setInterval(fetchTowers, CONFIG.refreshInterval);
     console.log(`🔄 Periodic updates every ${CONFIG.refreshInterval / 1000}s`);
 }
@@ -421,9 +459,9 @@ function startPeriodicUpdates() {
  */
 function updateDeviceMarker(location) {
     if (!map) return;
-    
+
     const latLng = [location.latitude, location.longitude];
-    
+
     if (deviceMarker) {
         // Update existing marker
         deviceMarker.setLatLng(latLng);
@@ -436,7 +474,7 @@ function updateDeviceMarker(location) {
                 iconSize: [30, 30]
             })
         }).addTo(map);
-        
+
         // Add accuracy circle
         L.circle(latLng, {
             radius: location.accuracy,
@@ -460,18 +498,18 @@ function updateDeviceMarker(location) {
  */
 function updateTowerMarkers(towers) {
     if (!map) return;
-    
+
     // Remove existing markers
     towerMarkers.forEach(marker => map.removeLayer(marker));
     towerMarkers = [];
-    
+
     // Add new markers for each tower
     towers.forEach(tower => {
         if (!tower.latitude || !tower.longitude) return;
-        
+
         const signalColor = getSignalColor(tower.signal_strength);
         const icon = tower.tower_type === 'NON_TERRESTRIAL_SATELLITE' ? '🛰️' : '🗼';
-        
+
         const marker = L.marker([tower.latitude, tower.longitude], {
             icon: L.divIcon({
                 className: 'tower-marker',
@@ -479,7 +517,7 @@ function updateTowerMarkers(towers) {
                 iconSize: [32, 32]
             })
         }).addTo(map);
-        
+
         // Add popup with tower details
         marker.bindPopup(`
             <strong>${icon} ${tower.network_type}</strong><br>
@@ -487,7 +525,7 @@ function updateTowerMarkers(towers) {
             Signal: ${tower.signal_strength} dBm<br>
             ${tower.registered ? '✅ Connected' : ''}
         `);
-        
+
         towerMarkers.push(marker);
     });
 }
