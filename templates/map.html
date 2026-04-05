@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}Map - CellSeeU{% endblock %}
+
+{% block content %}
+<div class="map-container">
+    <!-- Full-screen map -->
+    <div id="full-map" class="full-map"></div>
+    
+    <!-- Map controls overlay -->
+    <div class="map-controls">
+        <button id="btn-center-location" class="map-btn" title="Center on my location">
+            📍
+        </button>
+        <button id="btn-refresh-towers" class="map-btn" title="Refresh towers">
+            🔄
+        </button>
+        <button id="btn-toggle-satellite-view" class="map-btn" title="Toggle satellite view">
+            🛰️
+        </button>
+    </div>
+    
+    <!-- Tower details panel (slides in when tower is clicked) -->
+    <div id="tower-details-panel" class="details-panel hidden">
+        <div class="panel-header">
+            <h3>Tower Details</h3>
+            <button id="btn-close-panel" class="btn-close">✕</button>
+        </div>
+        <div id="tower-details-content" class="panel-content">
+            <!-- Populated dynamically via JavaScript -->
+        </div>
+    </div>
+    
+    <!-- Legend -->
+    <div class="map-legend">
+        <div class="legend-item">
+            <span class="legend-icon" style="background: #10b981;">●</span>
+            <span>Excellent Signal</span>
+        </div>
+        <div class="legend-item">
+            <span class="legend-icon" style="background: #eab308;">●</span>
+            <span>Good Signal</span>
+        </div>
+        <div class="legend-item">
+            <span class="legend-icon" style="background: #ef4444;">●</span>
+            <span>Weak Signal</span>
+        </div>
+        <div class="legend-item">
+            <span class="legend-icon satellite">🛰️</span>
+            <span>Satellite</span>
+        </div>
+        <div class="legend-item">
+            <span class="legend-icon">📍</span>
+            <span>Your Location</span>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Initialize full-screen map on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        initializeFullMap();
+    });
+</script>
+{% endblock %}

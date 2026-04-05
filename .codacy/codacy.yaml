@@ -1,8 +1,8 @@
 runtimes:
-    - java@17.0.10
-    - dart@3.7.2
     - node@22.2.0
+    - dart@3.7.2
     - python@3.11.11
+    - java@17.0.10
     - go@1.22.3
 tools:
     - dartanalyzer@3.7.2

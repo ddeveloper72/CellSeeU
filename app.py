@@ -13,7 +13,10 @@ from flask import Flask, render_template, jsonify, request
 from flask_cors import CORS
 from flask_talisman import Talisman
 from dotenv import load_dotenv
-from datetime import datetime
+from datetime import datetime, timezone
+
+# Import API blueprint
+from src.dashboard.routes import api as api_blueprint
 
 # Load environment variables from .env file
 load_dotenv()
@@ -53,6 +56,9 @@ if app.config['ENV'] == 'production':
         },
         content_security_policy_nonce_in=['script-src']
     )
+
+# Register API blueprint
+app.register_blueprint(api_blueprint)
 
 
 @app.after_request
@@ -136,7 +142,7 @@ def health_check():
     return jsonify({
         'status': 'healthy',
         'version': '0.1.0',
-        'timestamp': datetime.utcnow().isoformat()
+        'timestamp': datetime.now(timezone.utc).isoformat()
     })
 
 

@@ -11,6 +11,50 @@ from src.models.tower import CellTower, DeviceLocation
 
 
 @pytest.fixture
+def app():
+    """
+    Create Flask application for testing.
+    
+    Returns:
+        Flask app configured for testing
+    """
+    from app import app as flask_app
+    
+    flask_app.config['TESTING'] = True
+    flask_app.config['DEBUG'] = False
+    flask_app.config['ENV'] = 'testing'
+    
+    yield flask_app
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limits():
+    """
+    Reset rate limiting before each test.
+    
+    Prevents rate limit errors from affecting test results.
+    This runs automatically before every test.
+    """
+    import src.dashboard.routes as routes_module
+    routes_module._request_counts = {}
+    yield
+
+
+@pytest.fixture
+def client(app):
+    """
+    Create Flask test client.
+    
+    Args:
+        app: Flask application fixture
+        
+    Returns:
+        Flask test client
+    """
+    return app.test_client()
+
+
+@pytest.fixture
 def sample_lte_tower():
     """
     Fixture providing a sample terrestrial LTE tower.
