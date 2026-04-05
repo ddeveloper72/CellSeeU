@@ -6,7 +6,7 @@
 <div class="map-container">
     <!-- Full-screen map -->
     <div id="full-map" class="full-map"></div>
-    
+
     <!-- Map controls overlay -->
     <div class="map-controls">
         <button id="btn-center-location" class="map-btn" title="Center on my location">
@@ -19,7 +19,7 @@
             🛰️
         </button>
     </div>
-    
+
     <!-- Tower details panel (slides in when tower is clicked) -->
     <div id="tower-details-panel" class="details-panel hidden">
         <div class="panel-header">
@@ -30,7 +30,7 @@
             <!-- Populated dynamically via JavaScript -->
         </div>
     </div>
-    
+
     <!-- Legend -->
     <div class="map-legend">
         <div class="legend-item">
@@ -60,7 +60,7 @@
 {% block extra_js %}
 <script>
     // Initialize full-screen map on page load
-    document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('DOMContentLoaded', function () {
         initializeFullMap();
     });
 </script>

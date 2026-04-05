@@ -369,7 +369,7 @@ function createTowerCard(tower) {
             </div>
             <div class="tower-details">
                 <p><strong>Cell ID:</strong> ${tower.cell_id}</p>
-                <p><strong>Operator:</strong> ${tower.mcc}-${tower.mnc}</p>
+                <p><strong>Carrier:</strong> ${escapeHtml(tower.carrier || `${tower.mcc}-${tower.mnc}`)}</p>
                 <p><strong>Signal:</strong> ${tower.signal_strength} dBm ${signalBars}</p>
                 ${tower.distance_meters ? `<p><strong>Distance:</strong> ${Math.round(tower.distance_meters)}m</p>` : ''}
             </div>
@@ -547,6 +547,7 @@ function updateTowerMarkers(towers) {
         // Add popup with tower details
         marker.bindPopup(`
             <strong>${icon} ${tower.network_type}</strong><br>
+            Carrier: ${escapeHtml(tower.carrier || `${tower.mcc}-${tower.mnc}`)}<br>
             Cell ID: ${tower.cell_id}<br>
             Signal: ${tower.signal_strength} dBm<br>
             ${tower.registered ? '✅ Connected' : ''}

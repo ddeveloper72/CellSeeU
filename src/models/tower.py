@@ -71,14 +71,18 @@ class CellTower:
         Returns:
             Dictionary representation with all non-None fields
         """
+        from src.services.carrier_lookup import get_carrier_name
+        
         return {
             'cell_id': self.cell_id,
             'tower_type': self.tower_type,
             'network_type': self.network_type,
             'mcc': self.mcc,
             'mnc': self.mnc,
+            'carrier': get_carrier_name(self.mcc, self.mnc),
             'signal_strength': self.signal_strength,
             'signal_quality': self.signal_quality,
+            'signal_bars': self.signal_bars,
             'registered': self.registered,
             'lac': self.lac,
             'tac': self.tac,
@@ -102,6 +106,26 @@ class CellTower:
             Formatted PLMN code string
         """
         return f"{self.mcc}-{self.mnc}"
+    
+    @property
+    def carrier_name(self) -> str:
+        """
+        Get the human-readable carrier/operator name.
+        
+        Uses MCC-MNC lookup from public ITU-T E.212 database.
+        This is publicly available information and does not expose
+        any private data.
+        
+        Returns:
+            Carrier name (e.g., "T-Mobile USA", "Vodafone UK")
+            
+        Example:
+            >>> tower = CellTower(mcc=310, mnc=260, ...)
+            >>> tower.carrier_name
+            'T-Mobile USA'
+        """
+        from src.services.carrier_lookup import get_carrier_name
+        return get_carrier_name(self.mcc, self.mnc)
     
     @property
     def signal_bars(self) -> int:
