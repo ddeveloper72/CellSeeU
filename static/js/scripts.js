@@ -142,6 +142,30 @@ function requestLocation() {
         onLocationError,
         {
             enableHighAccuracy: true,
+            timeout: 30000,  // 30 seconds for initial GPS fix
+            maximumAge: 0     // Force fresh position, no cache
+        }
+    );
+    
+    // Then start continuous tracking with shorter timeout
+    locationWatchId = navigator.geolocation.watchPosition(
+        onLocationSuccess,
+        onLocationError,
+        {
+            enableHighAccuracy: true,
+            timeout: 15000,   // 15 seconds for updates
+            maximumAge: 0     // Always get fresh position
+        }
+    );
+}
+
+/**
+ * Handle successful geolocation
+ * 
+ * Updates the UI with current location and repositions
+ * the map to center on the device.
+ * 
+ * @param {Position} position - Geolocation position object
  * 
  * @note Only centers map on first position to avoid jarring user experience
  */
@@ -173,17 +197,11 @@ function onLocationSuccess(position) {
     // Log accuracy warning if GPS is not precise
     if (accuracy > 100) {
         console.warn(`⚠️ Location accuracy is low (±${accuracy}m). Move to area with better GPS signal.`);
-        altitude: position.coords.altitude,
-        speed: position.coords.speed,
-        timestamp: new Date().toISOString()
-    };
+    }
+}
 
-    // Update UI
-    updateLocationCard(currentLocation);
-    updateDeviceMarker(currentLocation);
-
-    // Center map on device location (first time only)
-    if (map && !deviceMarker) {
+/**
+ * Handle geolocation errors
         map.setView([currentLocation.latitude, currentLocation.longitude], CONFIG.mapZoom);
     }
 }
@@ -225,6 +243,9 @@ function onLocationError(error) {
             requestLocation();
         }, 5000);
     }
+}
+
+/**
  * Fetch tower data from API
  * 
  * Retrieves list of visible cell towers from backend.
@@ -413,20 +434,25 @@ function setupEventListeners() {
         });
     });
 }
-    if (btnRefresh) {
-        btnRefresh.addEventListener('click', fetchTowers);
-    }
-    
-    // Refresh location button on dashboard
-    const btnRefreshLocation = document.getElementById('btn-refresh-location');
-    if (btnRefreshLocation) {
-        btnRefreshLocation.addEventListener('click', () => {
-            isFirstLocationFix = true;  // Allow re-centering
-            requestLocation();
-        });         map.setView([currentLocation.latitude, currentLocation.longitude], CONFIG.mapZoom);
+
+/**
+ * Setup map control buttons
+ */
+function setupMapControls() {
+    // Center on location
+    const btnCenter = document.getElementById('btn-center-location');
+    if (btnCenter) {
+        btnCenter.addEventListener('click', () => {
+            if (currentLocation && map) {
+                map.setView([currentLocation.latitude, currentLocation.longitude], 15);
+                console.log('📍 Map re-centered on your location');
+            } else {
+                console.warn('⚠️ Location not available yet');
+                showError('Waiting for GPS location...');
+            }
         });
     }
-
+    
     // Refresh towers
     const btnRefresh = document.getElementById('btn-refresh-towers');
     if (btnRefresh) {
