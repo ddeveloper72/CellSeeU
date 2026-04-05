@@ -18,6 +18,11 @@ _request_counts = {}
 _rate_limit_window = 60  # seconds
 _rate_limit_max_requests = 100  # per window
 
+# Global storage for real tower data from Android app
+_real_tower_data = []
+_device_location = None
+_last_update_time = None
+
 
 def rate_limit(f):
     """
@@ -125,55 +130,81 @@ def get_towers():
             'message': 'Limit must be between 1 and 1000'
         }), 400
     
-    # Mock tower data for development
-    # NOTE: Replace with actual TelephonyManager data from Android service
-    mock_towers = [
-        {
-            'cell_id': 12345678,
-            'tower_type': 'TERRESTRIAL',
-            'network_type': 'LTE',
-            'mcc': 310,
-            'mnc': 260,
-            'carrier': 'T-Mobile USA',
-            'signal_strength': -85,
-            'signal_bars': 5,
-            'registered': True,
-            'latitude': 37.7749,
-            'longitude': -122.4194,
-            'distance_meters': 250,
-            'detected_at': datetime.now(timezone.utc).isoformat()
-        },
-        {
-            'cell_id': 87654321,
-            'tower_type': 'NON_TERRESTRIAL_SATELLITE',
-            'network_type': '5G_NR_NTN',
-            'mcc': 901,
-            'mnc': 88,
-            'carrier': 'Starlink (SpaceX)',
-            'signal_strength': -105,
-            'signal_bars': 3,
-            'registered': False,
-            'latitude': 37.7850,
-            'longitude': -122.4100,
-            'distance_meters': 1500,
-            'detected_at': datetime.now(timezone.utc).isoformat()
-        }
-    ]
+    # Use real tower data from Android app if available, otherwise use mock data
+    global _real_tower_data, _last_update_time
+    
+ if _real_tower_data:
+        # Use real data from Android TelephonyManager
+        towers = _real_tower_data.copy()
+    else:
+        # Fallback to mock tower data for development (Ireland-based for testing)
+        # NOTE: Install and run Android Scanner app to get real tower data
+        towers = [
+            {
+                'cell_id': 45612378,
+                'tower_type': 'TERRESTRIAL',
+                'network_type': 'LTE',
+                'mcc': 272,
+                'mnc': 1,
+                'carrier': 'Vodafone Ireland',
+                'signal_strength': -75,
+                'signal_bars': 5,
+                'registered': True,
+                'latitude': 53.3498,
+                'longitude': -6.2603,
+                'distance_meters': 180,
+                'detected_at': datetime.now(timezone.utc).isoformat()
+            },
+            {
+                'cell_id': 78945612,
+                'tower_type': 'TERRESTRIAL',
+                'network_type': '5G_NR',
+                'mcc': 272,
+                'mnc': 2,
+                'carrier': 'Three Ireland',
+                'signal_strength': -82,
+                'signal_bars': 4,
+                'registered': False,
+                'latitude': 53.3512,
+                'longitude': -6.2585,
+                'distance_meters': 320,
+                'detected_at': datetime.now(timezone.utc).isoformat()
+            },
+            {
+                'cell_id': 87654321,
+                'tower_type': 'NON_TERRESTRIAL_SATELLITE',
+                'network_type': '5G_NR_NTN',
+                'mcc': 901,
+                'mnc': 88,
+                'carrier': 'Starlink (SpaceX)',
+                'signal_strength': -105,
+                'signal_bars': 3,
+                'registered': False,
+                'latitude': 53.3485,
+                'longitude': -6.2520,
+                'distance_meters': 1200,
+                'detected_at': datetime.now(timezone.utc).isoformat()
+            }
+        ]
+    
+    # Variable name changed from mock_towers to towers for compatibility
     
     # Apply filter
     if filter_type == 'terrestrial':
-        mock_towers = [t for t in mock_towers if t['tower_type'] == 'TERRESTRIAL']
+        towers = [t for t in towers if t['tower_type'] == 'TERRESTRIAL']
     elif filter_type == 'satellite':
-        mock_towers = [t for t in mock_towers if t['tower_type'] == 'NON_TERRESTRIAL_SATELLITE']
+        towers = [t for t in towers if t['tower_type'] == 'NON_TERRESTRIAL_SATELLITE']
     elif filter_type == 'connected':
-        mock_towers = [t for t in mock_towers if t.get('registered', False)]
+        towers = [t for t in towers if t.get('registered', False)]
     
     # Apply limit
-    mock_towers = mock_towers[:limit]
+    towers = towers[:limit]
     
     return jsonify({
-        'towers': mock_towers,
-        'count': len(mock_towers),
+        'towers': towers,
+        'count': len(towers),
+        'data_source': 'real' if _real_tower_data else 'mock',
+        'last_update': _last_update_time.isoformat() if _last_update_time else None,
         'timestamp': datetime.now(timezone.utc).isoformat()
     })
 
@@ -270,6 +301,121 @@ def get_stats():
         'connected_network': 'LTE',
         'timestamp': datetime.now(timezone.utc).isoformat()
     })
+
+
+@api.route('/towers/upload', methods=['POST'])
+@rate_limit
+def upload_towers():
+    """
+    Receive real tower data from Android Scanner app.
+    
+    This endpoint receives cell tower data collected from the
+    Android TelephonyManager API and stores it for display
+    in the web dashboard.
+    
+    Expected JSON format:
+    {
+        "device_location": {
+            "latitude": 53.3498,
+            "longitude": -6.2603,
+            "accuracy": 15.0,
+            "altitude": 42.0
+        },
+        "towers": [
+            {
+                "cell_id": 45612378,
+                "mcc": 272,
+                "mnc": 1,
+                "network_type": "LTE",
+                "signal_strength": -75,
+                "registered": true,
+                "tower_type": "TERRESTRIAL",
+                "tac": 12345,
+                "pci": 123
+            }
+        ],
+        "count": 1,
+        "timestamp": 1680723456789
+    }
+    
+    Returns:
+        JSON response with success/error status
+    """
+    global _real_tower_data, _device_location, _last_update_time
+    
+    # Validate content type
+    if not request.is_json:
+        return jsonify({
+            'error': 'Content-Type must be application/json',
+            'status': 400
+        }), 400
+    
+    data = request.get_json()
+    
+    # Validate required fields
+    if 'towers' not in data:
+        return jsonify({
+            'error': 'Missing required field: towers',
+            'status': 400
+        }), 400
+    
+    if not isinstance(data['towers'], list):
+        return jsonify({
+            'error': 'Field "towers" must be an array',
+            'status': 400
+        }), 400
+    
+    try:
+        # Import carrier lookup to enrich tower data
+        from src.services.carrier_lookup import get_carrier_name
+        
+        # Process and enrich tower data
+        enriched_towers = []
+        for tower in data['towers']:
+            # Add carrier name from MCC-MNC
+            if 'mcc' in tower and 'mnc' in tower:
+                tower['carrier'] = get_carrier_name(tower['mcc'], tower['mnc'])
+            
+            # Calculate signal bars if not provided
+            if 'signal_bars' not in tower and 'signal_strength' in tower:
+                dbm = tower['signal_strength']
+                if dbm >= -85:
+                    tower['signal_bars'] = 5
+                elif dbm >= -95:
+                    tower['signal_bars'] = 4
+                elif dbm >= -105:
+                    tower['signal_bars'] = 3
+                elif dbm >= -115:
+                    tower['signal_bars'] = 2
+                elif dbm >= -125:
+                    tower['signal_bars'] = 1
+                else:
+                    tower['signal_bars'] = 0
+            
+            # Add timestamp ifnot provided
+            if 'detected_at' not in tower:
+                tower['detected_at'] = datetime.now(timezone.utc).isoformat()
+            
+            enriched_towers.append(tower)
+        
+        # Update global storage
+        _real_tower_data = enriched_towers
+        _device_location = data.get('device_location')
+        _last_update_time = datetime.now(timezone.utc)
+        
+        return jsonify({
+            'success': True,
+            'message': f'Received {len(enriched_towers)} towers',
+            'towers_received': len(enriched_towers),
+            'timestamp': _last_update_time.isoformat()
+        }), 201
+        
+    except Exception as e:
+        return jsonify({
+            'error': 'Failed to process tower data',
+            'details': str(e),
+            'status': 500
+        }), 500
 
 
 # Error handlers for API blueprint
