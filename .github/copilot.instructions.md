@@ -125,12 +125,96 @@ cell_see_u/
 
 ### 2. Version Control
 - **Make regular incremental commits** after each feature/fix
-- Use descriptive commit messages:
+- **Write meaningful commit messages** that explain WHY, not just WHAT:
   ```
-  ✅ "Add terrestrial tower classification logic"
-  ✅ "Implement mobile-first dashboard layout"
-  ✅ "Fix: Geolocation permission handling on Android 12+"
-  ❌Flask Dashboard Features
+  ✅ "Add terrestrial tower classification logic to distinguish satellite networks"
+  ✅ "Implement mobile-first dashboard layout for better touch targets"
+  ✅ "Fix: Geolocation permission handling on Android 12+ due to new privacy model"
+  ❌ "updates" or "fix stuff" or "changes"
+  ❌ "Add code" or "Update file"
+  ```
+- Commit message structure:
+  ```
+  Type: Brief summary (50 chars max)
+  
+  - Detailed explanation of what changed
+  - Why the change was necessary
+  - Any important context or considerations
+  - Link to issue/ticket if applicable
+  ```
+- Commit types: `Add:`, `Fix:`, `Update:`, `Refactor:`, `Docs:`, `Security:`, `Performance:`
+- Commit frequency: Every 30-60 minutes or after completing discrete tasks
+- Never commit .env, .venv, __pycache__, *.pyc files
+
+### 3. Code Documentation & Comments - **REQUIRED**
+- **Write meaningful comments** that explain the "why" and context, not just the "what"
+- **Document complex logic** - If it took you time to figure out, document it
+- **Add docstrings** to all functions, classes, and modules:
+  ```python
+  def classify_tower_type(cell_info):
+      """
+      Classify cell tower as terrestrial or non-terrestrial network.
+      
+      Non-terrestrial networks (NTN) use satellites instead of ground towers,
+      providing coverage in remote areas. Detection uses 3GPP Release 17+ 
+      indicators and known satellite operator MCC/MNC combinations.
+      
+      Args:
+          cell_info: TelephonyManager CellInfo object containing tower data
+          
+      Returns:
+          str: "TERRESTRIAL" or "NON_TERRESTRIAL_SATELLITE"
+          
+      Note:
+          Requires Android 13+ for isNonTerrestrialNetwork() API.
+          Falls back to PLMN matching on older versions.
+      """
+  ```
+
+- **Inline comments for clarity**:
+  ```python
+  # Good: Explains WHY and provides context
+  # Use 550ms timeout because satellite round-trip time can exceed 500ms
+  timeout_ms = 550
+  
+  # Bad: Just repeats the code
+  # Set timeout to 550
+  timeout_ms = 550
+  ```
+
+- **Comment conventions**:
+  - Use `# TODO:` for planned improvements
+  - Use `# FIXME:` for known issues that need addressing
+  - Use `# HACK:` for temporary workarounds (with explanation)
+  - Use `# NOTE:` for important context or gotchas
+  - Use `# WARNING:` for dangerous operations or side effects
+
+- **JavaScript/CSS documentation**:
+  ```javascript
+  /**
+   * Update tower markers on the map with real-time signal strength
+   * 
+   * Fetches latest tower data from API and updates existing markers.
+   * Creates new markers for newly detected towers. Removes markers
+   * for towers that are no longer visible (out of range).
+   * 
+   * @param {Array<Tower>} towers - Array of tower objects from API
+   * @returns {void}
+   * 
+   * @note Throttled to max 1 update per second to prevent map flicker
+   */
+  function updateTowerMarkers(towers) {
+      // Implementation
+  }
+  ```
+
+- **README and documentation updates**:
+  - Update README when adding new features
+  - Document API endpoints when creating them
+  - Update .env.example when adding new environment variables
+  - Keep copilot.instructions.md current with architectural changes
+
+## Flask Dashboard Features
 
 ### 1. Mobile-First Design Principles
 - **Design for mobile screens first**, then scale up to desktop
@@ -535,18 +619,31 @@ python app.py
 - Handle permission denials gracefully with user-friendly messages
 - Request runtime permissions on Android 6.0+ using Kivy's Android module
 
-### 5. Data Parsing
+### 5. Python Environment Management
+- **Always use .venv** for dependency isolation
+- Activate before working:
+  ```bash
+  # Windows
+  .venv\Scripts\activate
+  
+  # Linux/Mac
+  source .venv/bin/activate
+  ```
+- Install dependencies: `pip install -r requirements.txt`
+- Update requirements: `pip freeze > requirements.txt` after adding packages
+
+### 6. Data Parsing
 - Cell tower objects vary by type: `CellInfoLte`, `CellInfoNr`, `CellInfoGsm`, etc.
 - Extract common fields: registered status, signal strength, cell identity
 - Use try-except blocks when parsing cell info strings
 
-### 6. Signal Strength Interpretation
+### 7. Signal Strength Interpretation
 - **LTE**: RSRP (Reference Signal Received Power), RSRQ (Quality)
 - **5G NR**: SS-RSRP, SS-RSRQ, SS-SINR
 - **GSM/UMTS**: RSSI (Received Signal Strength Indicator)
 - Display in both dBm and user-friendly bars/percentages
 
-### 7. Legal & Ethical Compliance
+### 8. Legal & Ethical Compliance
 - ✅ **Legal**: Reading public cell tower information via official APIs
 - ❌ **Illegal**: Decrypting communications, intercepting data, IMSI catching
 - Always display disclaimers about intended educational/diagnostic use
