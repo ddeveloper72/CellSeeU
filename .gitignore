@@ -1,0 +1,70 @@
+
+
+# Environment variables - CRITICAL: Never commit secrets!
+.env
+
+# Python virtual environment
+.venv
+venv/
+ENV/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Flask
+instance/
+.webassets-cache
+*.db
+*.sqlite
+*.sqlite3
+
+# Android build files
+bin/
+.buildozer/
+*.apk
+*.aab
+.gradle/
+
+# IDE and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS files
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Secrets protection (redundant safety)
+*secret*
+*token*
+*key*.txt
+credentials.json
+secrets.json
+
+# Test coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Node modules (if using any JS tooling)
+node_modules/
+package-lock.json
+
+# Ignore vscode AI rules (custom)
+.github\instructions\codacy.instructions.md

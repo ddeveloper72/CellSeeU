@@ -1,0 +1,25 @@
+# Flask web framework
+Flask==3.0.0
+flask-cors==4.0.0
+
+# Environment management
+python-dotenv==1.0.0
+
+# Android (Kivy/Buildozer) - uncomment when building mobile app
+# kivy==2.2.1
+# pyjnius==1.5.0
+# plyer==2.1.0
+# buildozer==1.5.0
+
+# HTTP requests
+requests==2.31.0
+
+# Date/time utilities
+python-dateutil==2.8.2
+
+# Optional: Database
+# flask-sqlalchemy==3.0.5
+# pymongo==4.6.0
+
+# Optional: Async support
+# flask-socketio==5.3.5
