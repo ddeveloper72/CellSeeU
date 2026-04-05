@@ -133,7 +133,7 @@ def get_towers():
     # Use real tower data from Android app if available, otherwise use mock data
     global _real_tower_data, _last_update_time
     
- if _real_tower_data:
+    if _real_tower_data:
         # Use real data from Android TelephonyManager
         towers = _real_tower_data.copy()
     else:
