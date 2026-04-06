@@ -173,10 +173,10 @@ public class WiFi3DRenderer implements GLSurfaceView.Renderer {
         
         // Draw label connector line (angled to point toward label position)
         // Labels are offset (+15, -25) in screen space = upper-right
-        // Create 3D line that angles toward where label appears
-        float leaderHeight = 0.8f;
-        float leaderOffsetRight = 0.25f;  // Offset right to match label position
-        float leaderOffsetForward = 0.15f; // Offset toward camera
+        // Lines need to be MUCH LONGER to reach the distant labels
+        float leaderHeight = 2.5f;         // Extended upward reach
+        float leaderOffsetRight = 1.0f;    // Extended rightward reach
+        float leaderOffsetForward = 0.6f;  // Extended toward camera
         
         float[] leaderVertices = {
                 pos[0], pos[1], pos[2],    // Start at sphere position
