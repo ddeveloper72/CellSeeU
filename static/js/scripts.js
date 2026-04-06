@@ -896,7 +896,8 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
  * 
  * Uses propagation model to estimate how far nearby towers
  * can detect device signals. Stronger signal = device is closer,
- * so detection radius is smaller (fewer towers in range).\n * 
+ * so detection radius is smaller (fewer towers in range).
+ * 
  * @param {number} signalDbm - Current signal strength in dBm
  * @returns {number} Detection radius in meters
  */
@@ -949,7 +950,8 @@ function updateDetectionRadius(location, signalDbm) {
         Towers in this zone can detect your device
     `);
     
-    console.log(`🔴 IMEI detection radius: ${radius}m (signal: ${signalDbm} dBm)`);\n}
+    console.log(`🔴 IMEI detection radius: ${radius}m (signal: ${signalDbm} dBm)`);
+}
 
 /**
  * Update tracking panel showing services detecting IMEI
