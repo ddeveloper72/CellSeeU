@@ -32,6 +32,10 @@ _wifi_networks = []
 _wifi_connected = None
 _wifi_last_update = None
 
+# WiFi scan history for triangulation (stores multiple scans with GPS + orientation)
+_wifi_scan_history = []  # List of {timestamp, location, orientation, networks}
+_max_scan_history = 100  # Keep last 100 scans for triangulation
+
 
 def rate_limit(f):
     """
@@ -443,7 +447,7 @@ def upload_towers():
         JSON response with success/error status
     """
     global _real_tower_data, _device_location, _last_update_time
-    global _wifi_networks, _wifi_connected, _wifi_last_update
+    global _wifi_networks, _wifi_connected, _wifi_last_update, _wifi_scan_history
     
     # Validate content type
     if not request.is_json:
@@ -546,6 +550,35 @@ def upload_towers():
             _wifi_connected = data.get('wifi_connected', None)
             _wifi_last_update = datetime.now(timezone.utc)
             logger.info(f"📶 Received {len(_wifi_networks)} WiFi network(s)")
+            
+            # Store scan in history for triangulation if we have location and orientation
+            device_loc = data.get('device_location', {})
+            if device_loc and 'latitude' in device_loc and 'heading' in device_loc:
+                scan_record = {
+                    'timestamp': datetime.now(timezone.utc).isoformat(),
+                    'location': {
+                        'latitude': device_loc.get('latitude'),
+                        'longitude': device_loc.get('longitude'),
+                        'accuracy': device_loc.get('accuracy')
+                    },
+                    'orientation': {
+                        'heading': device_loc.get('heading'),
+                        'pitch': device_loc.get('pitch'),
+                        'roll': device_loc.get('roll'),
+                        'cardinal_direction': device_loc.get('cardinal_direction')
+                    },
+                    'networks': _wifi_networks
+                }
+                
+                # Add to history and limit size
+                _wifi_scan_history.append(scan_record)
+                if len(_wifi_scan_history) > _max_scan_history:
+                    _wifi_scan_history.pop(0)  # Remove oldest
+                
+                logger.info(f"🧭 Stored scan with orientation: {device_loc.get('cardinal_direction')} " +
+                          f"({device_loc.get('heading'):.1f}°) at " +
+                          f"({device_loc.get('latitude'):.6f}, {device_loc.get('longitude'):.6f})")
+                logger.info(f"📊 WiFi scan history: {len(_wifi_scan_history)} scans stored")
         
         return jsonify({
             'success': True,
@@ -621,6 +654,87 @@ def get_wifi():
         'last_update': None,
         'data_source': 'none',
         'message': 'No WiFi data available - scan from Android app first'
+    }), 200
+
+
+@api.route('/wifi/positions', methods=['GET'])
+@rate_limit
+def get_wifi_positions():
+    """
+    Get estimated WiFi AP positions from triangulation.
+    
+    Uses scan history (GPS + orientation + signal) to calculate
+    approximate locations of WiFi access points.
+    
+    Query params:
+        - min_confidence: Minimum confidence score (0-1, default 0.3)
+        - min_scans: Minimum number of scans required (default 2)
+    
+    Returns:
+        JSON with estimated AP positions:
+        {
+            "access_points": {
+                "aa:bb:cc:dd:ee:ff": {
+                    "ssid": "MyWiFi",
+                    "latitude": 53.xxx,
+                    "longitude": -6.xxx,
+                    "confidence": 0.75,
+                    "scan_count": 5,
+                    "accuracy_m": 25
+                }
+            },
+            "count": 12,
+            "scan_history_size": 47
+        }
+    """
+    global _wifi_scan_history
+    
+    # Get query parameters
+    min_confidence = float(request.args.get('min_confidence', 0.3))
+    min_scans = int(request.args.get('min_scans', 2))
+    
+    if not _wifi_scan_history:
+        return jsonify({
+            'access_points': {},
+            'count': 0,
+            'scan_history_size': 0,
+            'message': 'No WiFi scan history - walk around while scanning to collect data'
+        }), 200
+    
+    # Perform triangulation
+    from src.services.wifi_triangulation import analyze_wifi_scan_history
+    
+    logger.info(f"🔍 Analyzing {len(_wifi_scan_history)} WiFi scans for triangulation...")
+    ap_positions = analyze_wifi_scan_history(_wifi_scan_history)
+    
+    # Filter by confidence and scan count
+    filtered_aps = {}
+    for bssid, ap_data in ap_positions.items():
+        pos = ap_data.get('estimated_position', {})
+        if (pos.get('confidence', 0) >= min_confidence and
+            pos.get('scan_count', 0) >= min_scans):
+            
+            filtered_aps[bssid] = {
+                'ssid': ap_data['ssid'],
+                'security': ap_data.get('security', 'Unknown'),
+                'latitude': pos['latitude'],
+                'longitude': pos['longitude'],
+                'confidence': pos['confidence'],
+                'scan_count': pos['scan_count'],
+                'accuracy_m': pos['estimated_accuracy_m'],
+                'first_seen': ap_data.get('first_seen'),
+                'last_seen': ap_data.get('last_seen')
+            }
+    
+    logger.info(f"✓ Found {len(filtered_aps)} WiFi APs with sufficient confidence")
+    
+    return jsonify({
+        'access_points': filtered_aps,
+        'count': len(filtered_aps),
+        'total_aps_detected': len(ap_positions),
+        'scan_history_size': len(_wifi_scan_history),
+        'min_confidence': min_confidence,
+        'min_scans': min_scans
     }), 200
 
 

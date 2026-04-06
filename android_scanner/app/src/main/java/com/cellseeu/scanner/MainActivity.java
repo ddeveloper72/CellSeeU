@@ -20,6 +20,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView statusText;
     private Button scanButton;
     private LocationManager locationManager;
+    private OrientationSensor orientationSensor;
     private boolean isScanning = false;
 
     @Override
@@ -34,6 +35,15 @@ public class MainActivity extends AppCompatActivity {
         
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
         
+        // Initialize orientation sensor
+        orientationSensor = new OrientationSensor(this);
+        if (orientationSensor.sensorsAvailable()) {
+            orientationSensor.start();
+            Log.i("MainActivity", "🧭 Orientation sensors started");
+        } else {
+            Log.w("MainActivity", "⚠️ Orientation sensors not available");
+        }
+        
         scanButton.setOnClickListener(v -> {
             if (!isScanning) {
                 startScanning();
@@ -43,6 +53,14 @@ public class MainActivity extends AppCompatActivity {
         });
         
         checkPermissions();
+    }
+    
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (orientationSensor != null) {
+            orientationSensor.stop();
+        }
     }
 
     private android.view.View createLayout() {
@@ -165,10 +183,22 @@ public class MainActivity extends AppCompatActivity {
                 JSONObject wifiData = wifiScanner.scanNetworks();
                 JSONObject connectedWifi = wifiScanner.getConnectedNetwork();
                 
+                // Get orientation data
+                JSONObject deviceLocation = cellData.optJSONObject("device_location");
+                if (deviceLocation != null && orientationSensor != null && orientationSensor.hasOrientation()) {
+                    JSONObject orientation = orientationSensor.getOrientationJSON();
+                    deviceLocation.put("heading", orientation.getDouble("heading"));
+                    deviceLocation.put("pitch", orientation.getDouble("pitch"));
+                    deviceLocation.put("roll", orientation.getDouble("roll"));
+                    deviceLocation.put("cardinal_direction", orientation.getString("cardinal_direction"));
+                    Log.i("MainActivity", "🧭 Device pointing: " + orientation.getString("cardinal_direction") + 
+                          " (" + Math.round(orientation.getDouble("heading")) + "°)");
+                }
+                
                 // Combine data
                 JSONObject combinedData = new JSONObject();
                 combinedData.put("towers", cellData.getJSONArray("towers"));
-                combinedData.put("device_location", cellData.optJSONObject("device_location"));
+                combinedData.put("device_location", deviceLocation);
                 combinedData.put("wifi_networks", wifiData.getJSONArray("networks"));
                 combinedData.put("wifi_connected", connectedWifi);
                 combinedData.put("wifi_count", wifiData.optInt("count", 0));
@@ -186,6 +216,13 @@ public class MainActivity extends AppCompatActivity {
                     boolean registered = tower.optBoolean("registered", false);
                     towerInfo.append(String.format("\n• %s: %d dBm %s", 
                         type, signal, registered ? "(connected)" : ""));
+                }
+                
+                // Add orientation info if available
+                if (orientationSensor != null && orientationSensor.hasOrientation()) {
+                    towerInfo.append(String.format("\n\n🧭 Facing: %s (%.0f°)", 
+                        orientationSensor.getCardinalDirection(),
+                        orientationSensor.getAzimuth()));
                 }
                 
                 // Add WiFi info
