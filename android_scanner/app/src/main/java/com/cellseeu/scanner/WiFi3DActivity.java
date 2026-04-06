@@ -623,6 +623,10 @@ public class WiFi3DActivity extends AppCompatActivity {
         label.setPadding(8, 4, 8, 4);
         label.setShadowLayer(3, 0, 0, 0xFF000000);
         
+        // Prevent text wrapping - single line only
+        label.setSingleLine(true);
+        label.setMaxLines(1);
+        
         // Add colored border matching signal strength
         android.graphics.drawable.GradientDrawable border = new android.graphics.drawable.GradientDrawable();
         border.setColor(0xDD000000);  // Background
