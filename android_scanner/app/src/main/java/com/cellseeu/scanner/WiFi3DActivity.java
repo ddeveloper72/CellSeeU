@@ -428,6 +428,9 @@ public class WiFi3DActivity extends AppCompatActivity {
                     // Update UI
                     compassText.setText(String.format("Heading: %.0f° %s", heading, direction));
                     
+                    // Update label positions as device rotates
+                    updateNetworkLabels();
+                    
                     // Continue updating
                     compassHandler.postDelayed(this, 33); // ~30 FPS
                 }
@@ -437,7 +440,7 @@ public class WiFi3DActivity extends AppCompatActivity {
     
     /**
      * Update network labels overlay
-     * Projects 3D positions to 2D screen coordinates
+     * Projects 3D positions to 2D screen coordinates accounting for device rotation
      */
     private void updateNetworkLabels() {
         if (labelOverlay == null) return;
@@ -450,41 +453,75 @@ public class WiFi3DActivity extends AppCompatActivity {
                 return;
             }
             
-            // Add labels for each network
-            synchronized (currentNetworks) {
-                for (WiFiNetwork3D network : currentNetworks) {
-                    TextView label = new TextView(this);
-                    label.setText(network.getShortLabel(labelMode));
-                    label.setTextColor(0xFFFFFFFF);
-                    label.setTextSize(11);
-                    label.setBackgroundColor(0xCC000000);
-                    label.setPadding(8, 4, 8, 4);
-                    label.setShadowLayer(3, 0, 0, 0xFF000000);
-                    
-                    // Position label near network (simplified - centered on screen)
-                    // In a full implementation, you'd project 3D coords to 2D
-                    FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
-                            FrameLayout.LayoutParams.WRAP_CONTENT,
-                            FrameLayout.LayoutParams.WRAP_CONTENT
-                    );
-                    
-                    // Simplified positioning based on azimuth
-                    // This creates a circular arrangement
-                    int centerX = labelOverlay.getWidth() / 2;
-                    int centerY = labelOverlay.getHeight() / 2;
-                    int radius = 200;
-                    
-                    float angleRad = (float) Math.toRadians(network.azimuth);
-                    int x = centerX + (int)(radius * Math.sin(angleRad));
-                    int y = centerY - (int)(radius * Math.cos(angleRad));
-                    
-                    params.leftMargin = x - 50;
-                    params.topMargin = y - 10;
-                    
-                    label.setLayoutParams(params);
-                    labelOverlay.addView(label);
+            // Wait for layout to get actual dimensions
+            labelOverlay.post(() -> {
+                int screenWidth = labelOverlay.getWidth();
+                int screenHeight = labelOverlay.getHeight();
+                
+                // Fallback to display metrics if overlay not laid out yet
+                if (screenWidth == 0 || screenHeight == 0) {
+                    screenWidth = getResources().getDisplayMetrics().widthPixels;
+                    screenHeight = getResources().getDisplayMetrics().heightPixels;
                 }
-            }
+                
+                int centerX = screenWidth / 2;
+                int centerY = screenHeight / 2;
+                
+                // Get current device heading for rotation
+                float deviceHeading = orientationSensor != null && orientationSensor.hasOrientation() 
+                        ? orientationSensor.getAzimuth() : 0f;
+                
+                // Add labels for each network
+                synchronized (currentNetworks) {
+                    for (WiFiNetwork3D network : currentNetworks) {
+                        TextView label = new TextView(this);
+                        label.setText(network.getShortLabel(labelMode));
+                        label.setTextColor(0xFFFFFFFF);
+                        label.setTextSize(11);
+                        label.setBackgroundColor(0xCC000000);
+                        label.setPadding(8, 4, 8, 4);
+                        label.setShadowLayer(3, 0, 0, 0xFF000000);
+                        
+                        // Calculate position accounting for device rotation
+                        // Relative angle from device heading
+                        float relativeAzimuth = network.azimuth - deviceHeading;
+                        
+                        // Normalize to 0-360
+                        while (relativeAzimuth < 0) relativeAzimuth += 360;
+                        while (relativeAzimuth >= 360) relativeAzimuth -= 360;
+                        
+                        // Convert to radians
+                        float angleRad = (float) Math.toRadians(relativeAzimuth);
+                        
+                        // Distance from signal strength (closer = stronger)
+                        // Stronger signals (-30 dBm) = closer to edge
+                        // Weaker signals (-90 dBm) = closer to center
+                        float signalFactor = (network.signalStrength + 90f) / 60f; // 0 to 1
+                        signalFactor = Math.max(0.3f, Math.min(1.0f, signalFactor)); // Clamp
+                        
+                        // Radius based on screen size and signal
+                        int baseRadius = Math.min(screenWidth, screenHeight) / 3;
+                        int radius = (int)(baseRadius * signalFactor);
+                        
+                        // Calculate screen position
+                        int x = centerX + (int)(radius * Math.sin(angleRad));
+                        int y = centerY - (int)(radius * Math.cos(angleRad));
+                        
+                        // Create layout params
+                        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
+                                FrameLayout.LayoutParams.WRAP_CONTENT,
+                                FrameLayout.LayoutParams.WRAP_CONTENT
+                        );
+                        
+                        // Center the label on the calculated position
+                        params.leftMargin = x - 50; // Offset for approximate center
+                        params.topMargin = y - 10;
+                        
+                        label.setLayoutParams(params);
+                        labelOverlay.addView(label);
+                    }
+                }
+            });
         });
     }
     
