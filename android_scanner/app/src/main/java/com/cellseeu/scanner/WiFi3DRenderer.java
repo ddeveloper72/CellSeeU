@@ -37,6 +37,10 @@ public class WiFi3DRenderer implements GLSurfaceView.Renderer {
     // WiFi networks to render
     private List<WiFiNetwork3D> wifiNetworks = new ArrayList<>();
     
+    // Viewport dimensions for screen projection
+    private int viewportWidth = 1;
+    private int viewportHeight = 1;
+    
     // OpenGL program handles
     private int shaderProgram;
     private int positionHandle;
@@ -82,6 +86,9 @@ public class WiFi3DRenderer implements GLSurfaceView.Renderer {
     @Override
     public void onSurfaceChanged(GL10 unused, int width, int height) {
         GLES20.glViewport(0, 0, width, height);
+        
+        this.viewportWidth = width;
+        this.viewportHeight = height;
         
         float ratio = (float) width / height;
         
@@ -202,6 +209,78 @@ public class WiFi3DRenderer implements GLSurfaceView.Renderer {
         this.cameraAngleX = Math.max(-89f, Math.min(89f, angleX));
         this.cameraAngleY = angleY % 360f;
         this.cameraDistance = Math.max(5f, Math.min(50f, distance));
+    }
+    
+    /**
+     * Project 3D world coordinate to 2D screen coordinate
+     * Returns float[2] with x, y screen coordinates (or null if behind camera)
+     */
+    private float[] projectToScreen(float worldX, float worldY, float worldZ) {
+        // Create point in homogeneous coordinates
+        float[] point = {worldX, worldY, worldZ, 1.0f};
+        float[] result = new float[4];
+        
+        // Transform by view matrix
+        Matrix.multiplyMV(result, 0, viewMatrix, 0, point, 0);
+        
+        // Transform by projection matrix
+        float[] projected = new float[4];
+        Matrix.multiplyMV(projected, 0, projectionMatrix, 0, result, 0);
+        
+        // Check if point is in front of camera (positive w)
+        if (projected[3] <= 0) {
+            return null; // Behind camera
+        }
+        
+        // Perspective divide (convert to NDC: -1 to 1)
+        float ndcX = projected[0] / projected[3];
+        float ndcY = projected[1] / projected[3];
+        
+        // Check if within view frustum
+        if (Math.abs(ndcX) > 1.5f || Math.abs(ndcY) > 1.5f) {
+            return null; // Outside view
+        }
+        
+        // Convert NDC to screen coordinates
+        // NDC: (-1, -1) = bottom-left, (1, 1) = top-right
+        // Screen: (0, 0) = top-left, (width, height) = bottom-right
+        float screenX = (ndcX + 1.0f) * 0.5f * viewportWidth;
+        float screenY = (1.0f - ndcY) * 0.5f * viewportHeight; // Flip Y
+        
+        return new float[]{screenX, screenY};
+    }
+    
+    /**
+     * Get screen positions for all WiFi networks
+     * Returns list of {network, screenX, screenY} or null if not visible
+     */
+    public static class NetworkScreenPosition {
+        public WiFiNetwork3D network;
+        public float screenX;
+        public float screenY;
+        
+        public NetworkScreenPosition(WiFiNetwork3D network, float x, float y) {
+            this.network = network;
+            this.screenX = x;
+            this.screenY = y;
+        }
+    }
+    
+    public List<NetworkScreenPosition> getNetworkScreenPositions() {
+        List<NetworkScreenPosition> positions = new ArrayList<>();
+        
+        synchronized (wifiNetworks) {
+            for (WiFiNetwork3D network : wifiNetworks) {
+                float[] pos = network.getCartesianPosition();
+                float[] screenPos = projectToScreen(pos[0], pos[1], pos[2]);
+                
+                if (screenPos != null) {
+                    positions.add(new NetworkScreenPosition(network, screenPos[0], screenPos[1]));
+                }
+            }
+        }
+        
+        return positions;
     }
     
     // ===== SHADER CODE =====
