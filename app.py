@@ -128,6 +128,20 @@ def map_view():
     return render_template('map.html')
 
 
+@app.route('/wifi')
+def wifi_view():
+    """
+    WiFi network detection view.
+    
+    Displays all detected WiFi networks with signal strength,
+    security type, and tracking awareness information.
+    
+    Returns:
+        Rendered WiFi HTML template
+    """
+    return render_template('wifi.html')
+
+
 @app.route('/health')
 def health_check():
     """

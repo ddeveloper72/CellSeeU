@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+
+{% block title %}WiFi Networks - CellSeeU{% endblock %}
+
+{% block content %}
+<div class="container">
+    <!-- Page header -->
+    <header class="page-header">
+        <h1>📶 WiFi Network Detection</h1>
+        <p class="subtitle">Discover wireless networks around you and identify tracking risks</p>
+    </header>
+
+    <!-- Stats overview -->
+    <section class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-icon">📶</div>
+            <div class="stat-value" id="total-networks">-</div>
+            <div class="stat-label">Total Networks</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">🔒</div>
+            <div class="stat-value" id="secured-count">-</div>
+            <div class="stat-label">Secured</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">🔓</div>
+            <div class="stat-value" id="open-count">-</div>
+            <div class="stat-label">Open</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">✅</div>
+            <div class="stat-value" id="connected-network">-</div>
+            <div class="stat-label">Connected To</div>
+        </div>
+    </section>
+
+    <!-- Detection Awareness Panel -->
+    <section class="section">
+        <div id="wifi-tracking-panel" class="tracking-panel">
+            <h3>🔴 Networks That Can Detect Your Device</h3>
+            <div class="loading">Analyzing WiFi signals...</div>
+        </div>
+    </section>
+
+    <!-- WiFi list -->
+    <section class="section">
+        <h2>📶 Detected Networks</h2>
+        <div class="tower-filters">
+            <button class="filter-btn active" data-filter="all">All</button>
+            <button class="filter-btn" data-filter="secured">🔒 Secured</button>
+            <button class="filter-btn" data-filter="open">🔓 Open</button>
+            <button class="filter-btn" data-filter="5ghz">5GHz</button>
+            <button class="filter-btn" data-filter="2ghz">2.4GHz</button>
+        </div>
+        <div id="wifi-list" class="tower-grid">
+            <div class="loading">Scanning for WiFi networks...</div>
+        </div>
+    </section>
+
+    <!-- Refresh button -->
+    <section class="section">
+        <button id="btn-refresh-wifi" class="btn btn-primary">
+            🔄 Refresh WiFi List
+        </button>
+        <p class="subtitle" style="margin-top: 1rem;">
+            <small>💡 WiFi data comes from your Android device. Use the CellSeeU Scanner app to collect WiFi information.</small>
+        </p>
+    </section>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Initialize WiFi page on load
+    document.addEventListener('DOMContentLoaded', function () {
+        initializeWiFiPage();
+    });
+
+    function initializeWiFiPage() {
+        console.log('📶 Initializing WiFi page');
+        
+        fetchWiFiNetworks();
+        
+        // Setup refresh button
+        const btnRefresh = document.getElementById('btn-refresh-wifi');
+        if (btnRefresh) {
+            btnRefresh.addEventListener('click', fetchWiFiNetworks);
+        }
+        
+        // Setup filters
+        const filterButtons = document.querySelectorAll('.filter-btn');
+        filterButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                filterButtons.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                // TODO: Filter implementation
+            });
+        });
+    }
+
+    async function fetchWiFiNetworks() {
+        try {
+            const response = await fetch('/api/wifi');
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            const data = await response.json();
+            console.log(`📶 Found ${data.count} WiFi networks`);
+
+            updateWiFiStats(data);
+            updateWiFiList(data.networks);
+            updateWiFiTracking(data.networks, data.connected);
+
+        } catch (error) {
+            console.error('❌ Error fetching WiFi:', error);
+            showWiFiError('Unable to fetch WiFi data. Make sure Android app is running.');
+        }
+    }
+
+    function updateWiFiStats(data) {
+        document.getElementById('total-networks').textContent = data.count || 0;
+        
+        const secured = data.networks.filter(n => !n.is_open).length;
+        const open = data.networks.filter(n => n.is_open).length;
+        
+        document.getElementById('secured-count').textContent = secured;
+        document.getElementById('open-count').textContent = open;
+        
+        const connected = data.connected;
+        document.getElementById('connected-network').textContent = 
+            (connected && connected.is_connected) ? connected.ssid.replace(/"/g, '') : '-';
+    }
+
+    function updateWiFiList(networks) {
+        const container = document.getElementById('wifi-list');
+        
+        if (!networks || networks.length === 0) {
+            container.innerHTML = '<div class="loading">No WiFi networks detected</div>';
+            return;
+        }
+
+        // Sort by signal strength
+        networks.sort((a, b) => b.signal_strength - a.signal_strength);
+
+        let html = '';
+        networks.forEach(network => {
+            const signalQuality = network.signal_quality || 0;
+            const isOpen = network.is_open;
+            const isHidden = network.is_hidden;
+
+            html += `
+                <div class="tower-card">
+                    <h3>
+                        ${isOpen ? '🔓' : '🔒'} 
+                        ${escapeHtml(network.ssid)}
+                        ${isHidden ? '<span style="color: #888;">(Hidden)</span>' : ''}
+                    </h3>
+                    <p><strong>Signal:</strong> ${network.signal_strength} dBm (${signalQuality}%)</p>
+                    <p><strong>Security:</strong> ${network.security}</p>
+                    <p><strong>Band:</strong> ${network.band} (Channel ${network.channel})</p>
+                    <p><strong>BSSID:</strong> <code style="font-size: 0.85em;">${network.bssid}</code></p>
+                    ${isOpen ? '<p style="color: #ef4444;"><strong>⚠️ Open network - data not encrypted</strong></p>' : ''}
+                </div>
+            `;
+        });
+
+        container.innerHTML = html;
+    }
+
+    function updateWiFiTracking(networks, connected) {
+        const panel = document.getElementById('wifi-tracking-panel');
+        if (!panel) return;
+
+        let html = `
+            <h3>🔴 Networks That Can Detect Your Device</h3>
+            <div class="tracking-warning">
+                ⚠️ These WiFi networks can see your device's MAC address and location
+            </div>
+        `;
+
+        // Connected network (definitely can track)
+        if (connected && connected.is_connected) {
+            html += `
+                <div class="tracking-item active-connection">
+                    <div class="tracking-badge">🔴 CONNECTED</div>
+                    <strong>${escapeHtml(connected.ssid.replace(/"/g, ''))}</strong><br>
+                    <small>Signal: ${connected.signal_strength} dBm</small><br>
+                    <small>📍 Definitely tracking: MAC address, location, traffic</small>
+                </div>
+            `;
+        }
+
+        // All visible networks (can detect probe requests)
+        if (networks && networks.length > 0) {
+            html += `<h4>⚠️ Detecting Probe Requests (${networks.length} networks)</h4>`;
+            html += `<p><small>All visible networks can see your device scanning for WiFi</small></p>`;
+            
+            networks.slice(0, 5).forEach(network => {
+                const signalQuality = network.signal_quality || 0;
+                html += `
+                    <div class="tracking-item potential-detection">
+                        <div class="tracking-badge">⚠️ IN RANGE</div>
+                        <strong>${escapeHtml(network.ssid)}</strong> (${network.security})<br>
+                        <small>Signal: ${network.signal_strength} dBm (${signalQuality}%)</small><br>
+                        <small>📡 Can detect WiFi probe requests</small>
+                    </div>
+                `;
+            });
+            
+            if (networks.length > 5) {
+                html += `<p><small>...and ${networks.length - 5} more networks</small></p>`;
+            }
+        }
+
+        panel.innerHTML = html;
+    }
+
+    function showWiFiError(message) {
+        document.getElementById('wifi-list').innerHTML = 
+            `<div class="loading" style="color: #ef4444;">${escapeHtml(message)}</div>`;
+    }
+
+    function escapeHtml(text) {
+        if (typeof text !== 'string') return text;
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+</script>
+{% endblock %}

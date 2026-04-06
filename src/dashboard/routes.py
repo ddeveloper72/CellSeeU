@@ -27,6 +27,11 @@ _real_tower_data = []
 _device_location = None
 _last_update_time = None
 
+# Global storage for WiFi network data from Android app
+_wifi_networks = []
+_wifi_connected = None
+_wifi_last_update = None
+
 
 def rate_limit(f):
     """
@@ -438,6 +443,7 @@ def upload_towers():
         JSON response with success/error status
     """
     global _real_tower_data, _device_location, _last_update_time
+    global _wifi_networks, _wifi_connected, _wifi_last_update
     
     # Validate content type
     if not request.is_json:
@@ -534,10 +540,18 @@ def upload_towers():
         _device_location = data.get('device_location')
         _last_update_time = datetime.now(timezone.utc)
         
+        # Store WiFi network data if provided
+        if 'wifi_networks' in data:
+            _wifi_networks = data.get('wifi_networks', [])
+            _wifi_connected = data.get('wifi_connected', None)
+            _wifi_last_update = datetime.now(timezone.utc)
+            logger.info(f"📶 Received {len(_wifi_networks)} WiFi network(s)")
+        
         return jsonify({
             'success': True,
-            'message': f'Received {len(enriched_towers)} towers',
+            'message': f'Received {len(enriched_towers)} towers and {len(_wifi_networks)} WiFi networks',
             'towers_received': len(enriched_towers),
+            'wifi_received': len(_wifi_networks),
             'timestamp': _last_update_time.isoformat()
         }), 201
         
@@ -547,6 +561,67 @@ def upload_towers():
             'details': str(e),
             'status': 500
         }), 500
+
+
+@api.route('/wifi', methods=['GET'])
+@rate_limit
+def get_wifi():
+    """
+    Get list of all detected WiFi networks.
+    
+    Returns WiFi network data including SSID, signal strength, security type,
+    frequency, and channel information.
+    
+    Query Parameters:
+        filter: Optional filter ('open', 'secured', 'connected')
+        limit: Maximum number of networks to return (default: 100)
+    
+    Returns:
+        JSON: {
+            'networks': [...],
+            'count': int,
+            'connected': {...},
+            'last_update': str (ISO timestamp),
+            'data_source': str ('real' or 'none')
+        }
+    """
+    global _wifi_networks, _wifi_connected, _wifi_last_update
+    
+    # Get query parameters
+    filter_type = request.args.get('filter', None)
+    limit = min(int(request.args.get('limit', 100)), 1000)
+    
+    # Return real WiFi data if available
+    if _wifi_networks:
+        networks = _wifi_networks.copy()
+        
+        # Apply filters
+        if filter_type == 'open':
+            networks = [n for n in networks if n.get('is_open', False)]
+        elif filter_type == 'secured':
+            networks = [n for n in networks if not n.get('is_open', False)]
+        
+        # Limit results
+        networks = networks[:limit]
+        
+        return jsonify({
+            'networks': networks,
+            'count': len(networks),
+            'total_count': len(_wifi_networks),
+            'connected': _wifi_connected,
+            'last_update': _wifi_last_update.isoformat() if _wifi_last_update else None,
+            'data_source': 'real'
+        }), 200
+    
+    # No WiFi data available
+    return jsonify({
+        'networks': [],
+        'count': 0,
+        'connected': None,
+        'last_update': None,
+        'data_source': 'none',
+        'message': 'No WiFi data available - scan from Android app first'
+    }), 200
 
 
 # Error handlers for API blueprint

@@ -156,14 +156,29 @@ public class MainActivity extends AppCompatActivity {
     private void scanAndUpload(Location location) {
         new Thread(() -> {
             try {
-                CellTowerScanner scanner = new CellTowerScanner(this);
-                JSONObject data = scanner.scanTowers(location);
+                // Scan cell towers
+                CellTowerScanner cellScanner = new CellTowerScanner(this);
+                JSONObject cellData = cellScanner.scanTowers(location);
                 
-                int towerCount = data.getJSONArray("towers").length();
+                // Scan WiFi networks
+                WiFiScanner wifiScanner = new WiFiScanner(this);
+                JSONObject wifiData = wifiScanner.scanNetworks();
+                JSONObject connectedWifi = wifiScanner.getConnectedNetwork();
+                
+                // Combine data
+                JSONObject combinedData = new JSONObject();
+                combinedData.put("towers", cellData.getJSONArray("towers"));
+                combinedData.put("device_location", cellData.optJSONObject("device_location"));
+                combinedData.put("wifi_networks", wifiData.getJSONArray("networks"));
+                combinedData.put("wifi_connected", connectedWifi);
+                combinedData.put("wifi_count", wifiData.optInt("count", 0));
+                
+                int towerCount = cellData.getJSONArray("towers").length();
+                int wifiCount = wifiData.optInt("count", 0);
                 
                 // Build detailed info about each tower
                 StringBuilder towerInfo = new StringBuilder();
-                org.json.JSONArray towers = data.getJSONArray("towers");
+                org.json.JSONArray towers = cellData.getJSONArray("towers");
                 for (int i = 0; i < towers.length(); i++) {
                     org.json.JSONObject tower = towers.getJSONObject(i);
                     String type = tower.optString("network_type", "?");
@@ -173,12 +188,31 @@ public class MainActivity extends AppCompatActivity {
                         type, signal, registered ? "(connected)" : ""));
                 }
                 
-                boolean success = ApiClient.uploadTowerData(data);
+                // Add WiFi info
+                if (wifiCount > 0) {
+                    towerInfo.append("\n\n📶 WiFi Networks:");
+                    org.json.JSONArray wifiNetworks = wifiData.getJSONArray("networks");
+                    int displayCount = Math.min(3, wifiCount);  // Show top 3
+                    for (int i = 0; i < displayCount; i++) {
+                        org.json.JSONObject wifi = wifiNetworks.getJSONObject(i);
+                        String ssid = wifi.optString("ssid", "?");
+                        int signal = wifi.optInt("signal_strength", 0);
+                        towerInfo.append(String.format("\n• %s: %d dBm", ssid, signal));
+                    }
+                    if (wifiCount > 3) {
+                        towerInfo.append(String.format("\n• ...and %d more", wifiCount - 3));
+                    }
+                }
+                
+                boolean success = ApiClient.uploadTowerData(combinedData);
                 
                 String detailedInfo = towerInfo.toString();
                 runOnUiThread(() -> {
                     if (success) {
-                        String message = "✅ Uploaded " + towerCount + " towers!" + detailedInfo;
+                        String message = "✅ Uploaded:\n" +
+                                       "📡 " + towerCount + " cell towers\n" +
+                                       "📶 " + wifiCount + " WiFi networks" + 
+                                       detailedInfo;
                         
                         // Add note if only 1 tower detected
                         if (towerCount == 1) {
