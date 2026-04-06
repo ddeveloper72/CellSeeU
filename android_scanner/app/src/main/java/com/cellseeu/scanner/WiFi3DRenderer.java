@@ -170,6 +170,30 @@ public class WiFi3DRenderer implements GLSurfaceView.Renderer {
         float[] networkColor = new float[]{network.color[0], network.color[1], network.color[2], network.alpha};
         drawObject(networkSphere.getVertexBuffer(), networkSphere.getVertexCount(),
                   networkColor, GLES20.GL_TRIANGLE_FAN);
+        
+        // Draw label connector line (leader line pointing upward from sphere)
+        float leaderHeight = 0.8f;  // How high the line extends
+        float[] leaderVertices = {
+                pos[0], pos[1], pos[2],    // Start at sphere position
+                pos[0], pos[1] + leaderHeight, pos[2]  // End above sphere
+        };
+        
+        FloatBuffer leaderBuffer = ByteBuffer.allocateDirect(leaderVertices.length * 4)
+                .order(ByteOrder.nativeOrder()).asFloatBuffer();
+        leaderBuffer.put(leaderVertices).position(0);
+        
+        Matrix.setIdentityM(modelMatrix, 0);
+        // Bright white line - very visible!
+        float[] leaderColor = new float[]{1.0f, 1.0f, 1.0f, 1.0f};
+        drawObject(leaderBuffer, 2, leaderColor, GLES20.GL_LINES);
+        
+        // Draw bright anchor point at sphere (yellow dot)
+        Matrix.setIdentityM(modelMatrix, 0);
+        Matrix.translateM(modelMatrix, 0, pos[0], pos[1], pos[2]);
+        Matrix.scaleM(modelMatrix, 0, 0.15f, 0.15f, 0.15f);  // Small dot
+        float[] anchorColor = new float[]{1.0f, 1.0f, 0.0f, 1.0f};  // Yellow
+        drawObject(networkSphere.getVertexBuffer(), networkSphere.getVertexCount(),
+                  anchorColor, GLES20.GL_TRIANGLE_FAN);
     }
     
     private void drawObject(FloatBuffer vertexBuffer, int vertexCount, float[] color, int drawMode) {
