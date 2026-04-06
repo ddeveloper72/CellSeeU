@@ -11,10 +11,15 @@ import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
 import android.view.View;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
+import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.widget.ToggleButton;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import org.json.JSONArray;
@@ -48,6 +53,14 @@ public class WiFi3DActivity extends AppCompatActivity {
     private TextView compassText;
     private Button refreshButton;
     
+    // Label controls
+    private ToggleButton labelToggle;
+    private Spinner labelModeSpinner;
+    private FrameLayout labelOverlay;
+    private boolean showLabels = true;
+    private WiFiNetwork3D.LabelMode labelMode = WiFiNetwork3D.LabelMode.NAME;
+    private List<WiFiNetwork3D> currentNetworks = new ArrayList<>();
+    
     private WiFiScanner wifiScanner;
     private OrientationSensor orientationSensor;
     
@@ -65,10 +78,17 @@ public class WiFi3DActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
-        // Create layout programmatically
+        // Create layout programmatically with FrameLayout for overlays
+        FrameLayout rootLayout = new FrameLayout(this);
+        rootLayout.setBackgroundColor(0xFF0a0a1a);
+        
+        // Main vertical layout
         LinearLayout mainLayout = new LinearLayout(this);
         mainLayout.setOrientation(LinearLayout.VERTICAL);
-        mainLayout.setBackgroundColor(0xFF0a0a1a);
+        mainLayout.setLayoutParams(new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+        ));
         
         // Info panel at top
         LinearLayout infoPanel = createInfoPanel();
@@ -94,7 +114,18 @@ public class WiFi3DActivity extends AppCompatActivity {
         LinearLayout controlPanel = createControlPanel();
         mainLayout.addView(controlPanel);
         
-        setContentView(mainLayout);
+        // Add main layout to root
+        rootLayout.addView(mainLayout);
+        
+        // Add label overlay (on top of everything)
+        labelOverlay = new FrameLayout(this);
+        labelOverlay.setLayoutParams(new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+        ));
+        rootLayout.addView(labelOverlay);
+        
+        setContentView(rootLayout);
         
         // Initialize sensors
         wifiScanner = new WiFiScanner(this);
@@ -157,9 +188,73 @@ public class WiFi3DActivity extends AppCompatActivity {
     
     private LinearLayout createControlPanel() {
         LinearLayout panel = new LinearLayout(this);
-        panel.setOrientation(LinearLayout.HORIZONTAL);
-        panel.setPadding(20, 15, 20, 15);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(15, 10, 15, 10);
         panel.setBackgroundColor(0xCC000000);
+        
+        // First row: Label controls
+        LinearLayout labelRow = new LinearLayout(this);
+        labelRow.setOrientation(LinearLayout.HORIZONTAL);
+        labelRow.setPadding(5, 5, 5, 10);
+        
+        // Label toggle
+        labelToggle = new ToggleButton(this);
+        labelToggle.setTextOn("Labels ON");
+        labelToggle.setTextOff("Labels OFF");
+        labelToggle.setChecked(showLabels);
+        labelToggle.setTextColor(0xFFFFFFFF);
+        labelToggle.setBackgroundColor(0xFF4fc3f7);
+        labelToggle.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            showLabels = isChecked;
+            updateNetworkLabels();
+        });
+        
+        LinearLayout.LayoutParams toggleParams = new LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                0.4f
+        );
+        toggleParams.setMargins(0, 0, 10, 0);
+        labelToggle.setLayoutParams(toggleParams);
+        labelRow.addView(labelToggle);
+        
+        // Label mode spinner
+        labelModeSpinner = new Spinner(this);
+        String[] modes = {"Network Names", "Signal Strength", "Security Type", "WiFi Channel"};
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, 
+                android.R.layout.simple_spinner_dropdown_item, modes);
+        labelModeSpinner.setAdapter(adapter);
+        labelModeSpinner.setSelection(0);
+        labelModeSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                switch (position) {
+                    case 0: labelMode = WiFiNetwork3D.LabelMode.NAME; break;
+                    case 1: labelMode = WiFiNetwork3D.LabelMode.SIGNAL; break;
+                    case 2: labelMode = WiFiNetwork3D.LabelMode.SECURITY; break;
+                    case 3: labelMode = WiFiNetwork3D.LabelMode.CHANNEL; break;
+                }
+                updateNetworkLabels();
+            }
+            
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {}
+        });
+        
+        LinearLayout.LayoutParams spinnerParams = new LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                0.6f
+        );
+        labelModeSpinner.setLayoutParams(spinnerParams);
+        labelRow.addView(labelModeSpinner);
+        
+        panel.addView(labelRow);
+        
+        // Second row: Action buttons
+        LinearLayout buttonRow = new LinearLayout(this);
+        buttonRow.setOrientation(LinearLayout.HORIZONTAL);
+        buttonRow.setPadding(5, 0, 5, 5);
         
         // Refresh button
         refreshButton = new Button(this);
@@ -175,7 +270,7 @@ public class WiFi3DActivity extends AppCompatActivity {
         );
         btnParams.setMargins(5, 0, 5, 0);
         refreshButton.setLayoutParams(btnParams);
-        panel.addView(refreshButton);
+        buttonRow.addView(refreshButton);
         
         // Back button
         Button backButton = new Button(this);
@@ -184,7 +279,9 @@ public class WiFi3DActivity extends AppCompatActivity {
         backButton.setBackgroundColor(0xFF666666);
         backButton.setOnClickListener(v -> finish());
         backButton.setLayoutParams(btnParams);
-        panel.addView(backButton);
+        buttonRow.addView(backButton);
+        
+        panel.addView(buttonRow);
         
         return panel;
     }
@@ -272,9 +369,13 @@ public class WiFi3DActivity extends AppCompatActivity {
                     String bssid = network.optString("bssid", "");
                     int signal = network.optInt("signal_strength", -90);
                     String security = network.optString("security", "Unknown");
+                    int channel = network.optInt("channel", 0);
+                    int frequency = network.optInt("frequency", 0);
+                    String band = network.optString("band", "Unknown");
                     boolean isConnected = bssid.equals(connectedBSSID);
                     
-                    WiFiNetwork3D network3D = new WiFiNetwork3D(ssid, bssid, signal, security, isConnected);
+                    WiFiNetwork3D network3D = new WiFiNetwork3D(ssid, bssid, signal, security, 
+                                                                 channel, frequency, band, isConnected);
                     
                     // Use compass bearing to position network (if available)
                     if (orientationSensor != null && orientationSensor.hasOrientation()) {
@@ -290,10 +391,16 @@ public class WiFi3DActivity extends AppCompatActivity {
                 // Update renderer with new network data
                 renderer.updateWiFiNetworks(network3DList);
                 
+                // Store networks for label updates
+                synchronized (currentNetworks) {
+                    currentNetworks = new ArrayList<>(network3DList);
+                }
+                
                 int count = networks.length();
                 runOnUiThread(() -> {
                     networkCountText.setText("Networks: " + count);
                     statusText.setText("Last scan: " + count + " networks detected");
+                    updateNetworkLabels();
                 });
                 
                 Log.i(TAG, "📶 Updated 3D view with " + count + " networks");
@@ -326,6 +433,59 @@ public class WiFi3DActivity extends AppCompatActivity {
                 }
             }
         }, 33);
+    }
+    
+    /**
+     * Update network labels overlay
+     * Projects 3D positions to 2D screen coordinates
+     */
+    private void updateNetworkLabels() {
+        if (labelOverlay == null) return;
+        
+        runOnUiThread(() -> {
+            // Clear existing labels
+            labelOverlay.removeAllViews();
+            
+            if (!showLabels || currentNetworks.isEmpty()) {
+                return;
+            }
+            
+            // Add labels for each network
+            synchronized (currentNetworks) {
+                for (WiFiNetwork3D network : currentNetworks) {
+                    TextView label = new TextView(this);
+                    label.setText(network.getShortLabel(labelMode));
+                    label.setTextColor(0xFFFFFFFF);
+                    label.setTextSize(11);
+                    label.setBackgroundColor(0xCC000000);
+                    label.setPadding(8, 4, 8, 4);
+                    label.setShadowLayer(3, 0, 0, 0xFF000000);
+                    
+                    // Position label near network (simplified - centered on screen)
+                    // In a full implementation, you'd project 3D coords to 2D
+                    FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
+                            FrameLayout.LayoutParams.WRAP_CONTENT,
+                            FrameLayout.LayoutParams.WRAP_CONTENT
+                    );
+                    
+                    // Simplified positioning based on azimuth
+                    // This creates a circular arrangement
+                    int centerX = labelOverlay.getWidth() / 2;
+                    int centerY = labelOverlay.getHeight() / 2;
+                    int radius = 200;
+                    
+                    float angleRad = (float) Math.toRadians(network.azimuth);
+                    int x = centerX + (int)(radius * Math.sin(angleRad));
+                    int y = centerY - (int)(radius * Math.cos(angleRad));
+                    
+                    params.leftMargin = x - 50;
+                    params.topMargin = y - 10;
+                    
+                    label.setLayoutParams(params);
+                    labelOverlay.addView(label);
+                }
+            }
+        });
     }
     
     @Override

@@ -115,6 +115,7 @@
     }
 
     @media (max-width: 768px) {
+
         .wifi3d-info,
         .wifi3d-controls,
         .wifi3d-legend {
@@ -342,7 +343,7 @@
         directions.forEach(dir => {
             const x = Math.sin(dir.angle) * 22;
             const z = Math.cos(dir.angle) * 22;
-            
+
             const markerGeometry = new THREE.SphereGeometry(0.8, 16, 16);
             const markerMaterial = new THREE.MeshBasicMaterial({ color: dir.color });
             const marker = new THREE.Mesh(markerGeometry, markerMaterial);
@@ -383,7 +384,7 @@
     function createAmbientParticles() {
         const particleCount = 500;
         const positions = new Float32Array(particleCount * 3);
-        
+
         for (let i = 0; i < particleCount * 3; i += 3) {
             positions[i] = (Math.random() - 0.5) * 200;
             positions[i + 1] = (Math.random() - 0.5) * 200;
@@ -420,7 +421,7 @@
         const maxRSSI = -30;
         const minDistance = 15;
         const maxDistance = 45;
-        
+
         const normalized = (rssi - minRSSI) / (maxRSSI - minRSSI);
         return maxDistance - (normalized * (maxDistance - minDistance));
     }
@@ -478,7 +479,7 @@
                 opacity: 0.2
             });
             const beam = new THREE.Mesh(beamGeometry, beamMaterial);
-            
+
             // Position and rotate beam to connect device to network
             beam.position.set(x / 2, y / 2, z / 2);
             beam.lookAt(x, y, z);
@@ -542,17 +543,17 @@
         try {
             const response = await fetch('/api/wifi');
             const data = await response.json();
-            
+
             wifiNetworks = data.networks || [];
-            
+
             // Update device info
             if (data.device_location) {
                 const loc = data.device_location;
-                document.getElementById('device-heading').textContent = 
+                document.getElementById('device-heading').textContent =
                     `Heading: ${loc.heading?.toFixed(1) || '--'}° ${loc.cardinal_direction || ''}`;
-                document.getElementById('device-location').textContent = 
+                document.getElementById('device-location').textContent =
                     `Location: ${loc.latitude?.toFixed(4)}, ${loc.longitude?.toFixed(4)}`;
-                
+
                 updateWiFiNetworks(wifiNetworks, loc.heading || 0);
             } else {
                 updateWiFiNetworks(wifiNetworks);
@@ -587,7 +588,7 @@
     window.addEventListener('DOMContentLoaded', () => {
         init3DScene();
         fetchWiFiData();
-        
+
         // Auto-refresh every 15 seconds
         setInterval(fetchWiFiData, 15000);
     });

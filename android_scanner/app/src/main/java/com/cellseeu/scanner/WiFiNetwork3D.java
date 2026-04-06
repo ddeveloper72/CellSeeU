@@ -8,6 +8,9 @@ public class WiFiNetwork3D {
     public String bssid;
     public int signalStrength;  // RSSI in dBm
     public String security;
+    public int channel;         // WiFi channel (1-14, 36-165)
+    public int frequency;       // Frequency in MHz
+    public String band;         // "2.4GHz" or "5GHz"
     public boolean isConnected;
     
     // 3D position (spherical coordinates)
@@ -19,11 +22,24 @@ public class WiFiNetwork3D {
     public float[] color;       // RGB color based on signal strength
     public float alpha;         // Transparency
     
-    public WiFiNetwork3D(String ssid, String bssid, int signalStrength, String security, boolean isConnected) {
+    // Label display modes
+    public enum LabelMode {
+        NAME,           // SSID
+        SIGNAL,         // Signal strength in dBm
+        SECURITY,       // Security type (WPA2, Open, etc)
+        CHANNEL         // Channel number and band
+    }
+    
+    public WiFiNetwork3D(String ssid, String bssid, int signalStrength, String security, 
+                         int channel, int frequency, String band, 
+                         int channel, int frequency, String band, boolean isConnected) {
         this.ssid = ssid;
         this.bssid = bssid;
         this.signalStrength = signalStrength;
         this.security = security;
+        this.channel = channel;
+        this.frequency = frequency;
+        this.band = band;
         this.isConnected = isConnected;
         
         // Calculate distance based on signal strength
@@ -102,11 +118,46 @@ public class WiFiNetwork3D {
         this.azimuth = bearing;
     }
     
+    /**
+     * Get label text based on display mode
+     */
+    public String getLabel(LabelMode mode) {
+        switch (mode) {
+            case NAME:
+                String name = (ssid != null && !ssid.isEmpty()) ? ssid : "<Hidden>";
+                return isConnected ? name + " ★" : name;
+            
+            case SIGNAL:
+                return signalStrength + " dBm";
+            
+            case SECURITY:
+                return security;
+            
+            case CHANNEL:
+                return "Ch " + channel + " (" + band + ")";
+            
+            default:
+                return ssid != null ? ssid : "<Hidden>";
+        }
+    }
+    
+    /**
+     * Get short label (first word only for less clutter)
+     */
+    public String getShortLabel(LabelMode mode) {
+        String full = getLabel(mode);
+        if (mode == LabelMode.NAME && full.contains(" ")) {
+            return full.split(" ")[0];
+        }
+        return full;
+    }
+    
     @Override
     public String toString() {
-        return String.format("%s (%d dBm) at (%.1f°, %.1f°, %.1fm)", 
+        return String.format("%s (%d dBm, Ch %d) at (%.1f°, %.1f°, %.1fm)", 
             ssid != null ? ssid : "<Hidden>", 
-            signalStrength, 
+            signalStrength,
+            channel,
             azimuth, 
             elevation, 
             distance);
