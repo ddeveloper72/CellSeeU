@@ -31,7 +31,6 @@ public class WiFiNetwork3D {
     }
     
     public WiFiNetwork3D(String ssid, String bssid, int signalStrength, String security, 
-                         int channel, int frequency, String band, 
                          int channel, int frequency, String band, boolean isConnected) {
         this.ssid = ssid;
         this.bssid = bssid;
