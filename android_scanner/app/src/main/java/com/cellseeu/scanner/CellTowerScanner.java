@@ -64,6 +64,12 @@ public class CellTowerScanner {
                 locationJson.put("accuracy", deviceLocation.getAccuracy());
                 locationJson.put("altitude", deviceLocation.getAltitude());
                 result.put("device_location", locationJson);
+                Log.i(TAG, String.format("Device location: %.6f, %.6f (±%.0fm)", 
+                    deviceLocation.getLatitude(), 
+                    deviceLocation.getLongitude(), 
+                    deviceLocation.getAccuracy()));
+            } else {
+                Log.w(TAG, "⚠️ No device location available - tower coordinates cannot be estimated");
             }
             
             // Get all cell info
@@ -76,12 +82,23 @@ public class CellTowerScanner {
                 return result;
             }
             
+            Log.i(TAG, "getAllCellInfo() returned " + cellInfoList.size() + " cell tower(s)");
+            
+            if (cellInfoList.size() == 1) {
+                Log.w(TAG, "Only 1 tower detected. This is normal - many Android devices/carriers only expose the serving cell, not neighboring towers.");
+            }
+            
             JSONArray towersArray = new JSONArray();
             
             for (CellInfo cellInfo : cellInfoList) {
                 JSONObject towerJson = parseCellInfo(cellInfo);
                 if (towerJson != null) {
                     towersArray.put(towerJson);
+                    Log.d(TAG, "Parsed tower: " + towerJson.optString("network_type") + 
+                          " signal=" + towerJson.optInt("signal_strength") + 
+                          " registered=" + towerJson.optBoolean("registered"));
+                } else {
+                    Log.w(TAG, "Failed to parse tower: " + cellInfo.getClass().getSimpleName());
                 }
             }
             
@@ -102,14 +119,27 @@ public class CellTowerScanner {
      * Get all cell info from TelephonyManager
      */
     private List<CellInfo> getAllCellInfo() {
-        // Check permissions
+        // Check location permission
         if (ActivityCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION)
                 != PackageManager.PERMISSION_GRANTED) {
             Log.e(TAG, "Location permission not granted");
             return null;
         }
         
-        return telephonyManager.getAllCellInfo();
+        // Check phone state permission (required for neighboring cells on Android 10+)
+        if (ActivityCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE)
+                != PackageManager.PERMISSION_GRANTED) {
+            Log.e(TAG, "Phone state permission not granted - may only return connected tower");
+        }
+        
+        List<CellInfo> cellInfoList = telephonyManager.getAllCellInfo();
+        
+        if (cellInfoList != null) {
+            Log.i(TAG, "getAllCellInfo() returned " + cellInfoList.size() + " tower(s) from TelephonyManager");
+            Log.i(TAG, "Note: Android may limit neighboring cell info based on API level and carrier");
+        }
+        
+        return cellInfoList;
     }
     
 /**

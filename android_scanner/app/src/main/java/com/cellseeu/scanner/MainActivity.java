@@ -1,0 +1,213 @@
+package com.cellseeu.scanner;
+
+import android.Manifest;
+import android.content.Context;
+import android.content.pm.PackageManager;
+import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
+import android.os.Bundle;
+import android.util.Log;
+import android.widget.Button;
+import android.widget.TextView;
+import android.widget.Toast;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
+import org.json.JSONObject;
+
+public class MainActivity extends AppCompatActivity {
+    private static final int PERMISSION_REQUEST_CODE = 1;
+    private TextView statusText;
+    private Button scanButton;
+    private LocationManager locationManager;
+    private boolean isScanning = false;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        
+        // Create simple UI
+        setContentView(createLayout());
+        
+        statusText = findViewById(R.id.status_text);
+        scanButton = findViewById(R.id.scan_button);
+        
+        locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        
+        scanButton.setOnClickListener(v -> {
+            if (!isScanning) {
+                startScanning();
+            } else {
+                stopScanning();
+            }
+        });
+        
+        checkPermissions();
+    }
+
+    private android.view.View createLayout() {
+        android.widget.LinearLayout layout = new android.widget.LinearLayout(this);
+        layout.setOrientation(android.widget.LinearLayout.VERTICAL);
+        layout.setPadding(50, 50, 50, 50);
+        
+        statusText = new TextView(this);
+        statusText.setId(R.id.status_text);
+        statusText.setText("Ready to scan");
+        statusText.setTextSize(18);
+        statusText.setPadding(0, 0, 0, 40);
+        
+        scanButton = new Button(this);
+        scanButton.setId(R.id.scan_button);
+        scanButton.setText("Start Scanning");
+        scanButton.setTextSize(20);
+        
+        layout.addView(statusText);
+        layout.addView(scanButton);
+        
+        return layout;
+    }
+
+    private void checkPermissions() {
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED ||
+            ActivityCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this,
+                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.READ_PHONE_STATE},
+                    PERMISSION_REQUEST_CODE);
+        }
+    }
+
+    private void startScanning() {
+        // Check both permissions
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            Toast.makeText(this, "Location permission required", Toast.LENGTH_SHORT).show();
+            checkPermissions();
+            return;
+        }
+        
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) {
+            Toast.makeText(this, "Phone State permission required for cell tower detection", Toast.LENGTH_LONG).show();
+            checkPermissions();
+            return;
+        }
+
+        isScanning = true;
+        scanButton.setText("Stop Scanning");
+        statusText.setText("Scanning...");
+
+        // Get last known location or request updates
+        Location location = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+        if (location == null) {
+            location = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
+        }
+        
+        if (location != null) {
+            scanAndUpload(location);
+        } else {
+            statusText.setText("Getting location...");
+            
+            // Try to get last known location first (faster)
+            Location gpsLocation = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+            Location networkLocation = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
+            final Location lastKnown = (gpsLocation != null) ? gpsLocation : networkLocation;
+            
+            // If we have a recent location, use it immediately
+            if (lastKnown != null && (System.currentTimeMillis() - lastKnown.getTime()) < 60000) {
+                Log.i("MainActivity", "Using last known location (age: " + (System.currentTimeMillis() - lastKnown.getTime())/1000 + "s)");
+                scanAndUpload(lastKnown);
+                return;
+            }
+            
+            // Otherwise request fresh location with timeout
+            final boolean[] locationReceived = {false};
+            
+            locationManager.requestSingleUpdate(LocationManager.NETWORK_PROVIDER, new LocationListener() {
+                @Override
+                public void onLocationChanged(Location loc) {
+                    if (!locationReceived[0]) {
+                        locationReceived[0] = true;
+                        Log.i("MainActivity", "Got fresh location: " + loc.getLatitude() + ", " + loc.getLongitude());
+                        scanAndUpload(loc);
+                    }
+                }
+                @Override
+                public void onStatusChanged(String provider, int status, Bundle extras) {}
+                @Override
+                public void onProviderEnabled(String provider) {}
+                @Override
+                public void onProviderDisabled(String provider) {}
+            }, null);
+            
+            // Timeout after 5 seconds - scan without location if GPS is slow
+            new Thread(() -> {
+                try {
+                    Thread.sleep(5000);
+                    if (!locationReceived[0]) {
+                        Log.w("MainActivity", "Location timeout - scanning without GPS");
+                        runOnUiThread(() -> statusText.setText("Location timeout - scanning without GPS..."));
+                        scanAndUpload(lastKnown);  // Use stale location or null
+                    }
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }).start();
+        }
+    }
+
+    private void scanAndUpload(Location location) {
+        new Thread(() -> {
+            try {
+                CellTowerScanner scanner = new CellTowerScanner(this);
+                JSONObject data = scanner.scanTowers(location);
+                
+                int towerCount = data.getJSONArray("towers").length();
+                
+                // Build detailed info about each tower
+                StringBuilder towerInfo = new StringBuilder();
+                org.json.JSONArray towers = data.getJSONArray("towers");
+                for (int i = 0; i < towers.length(); i++) {
+                    org.json.JSONObject tower = towers.getJSONObject(i);
+                    String type = tower.optString("network_type", "?");
+                    int signal = tower.optInt("signal_strength", 0);
+                    boolean registered = tower.optBoolean("registered", false);
+                    towerInfo.append(String.format("\n• %s: %d dBm %s", 
+                        type, signal, registered ? "(connected)" : ""));
+                }
+                
+                boolean success = ApiClient.uploadTowerData(data);
+                
+                String detailedInfo = towerInfo.toString();
+                runOnUiThread(() -> {
+                    if (success) {
+                        String message = "✅ Uploaded " + towerCount + " towers!" + detailedInfo;
+                        
+                        // Add note if only 1 tower detected
+                        if (towerCount == 1) {
+                            message += "\n\n⚠️ Note: Most phones only detect the connected tower. Neighboring cells are often hidden by Android/carrier.";
+                        }
+                        
+                        message += "\n\nServer: " + ServerConfig.SERVER_URL;
+                        statusText.setText(message);
+                    } else {
+                        statusText.setText("❌ Upload failed. Check network.");
+                    }
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> statusText.setText("Error: " + e.getMessage()));
+            }
+        }).start();
+    }
+
+    private void stopScanning() {
+        isScanning = false;
+        scanButton.setText("Start Scanning");
+        statusText.setText("Stopped");
+    }
+
+    // Generate IDs for views
+    public static class R {
+        public static class id {
+            public static final int status_text = 1;
+            public static final int scan_button = 2;
+        }
+    }
+}

@@ -23,6 +23,8 @@ let map = null;
 let deviceMarker = null;
 let towerMarkers = [];
 let nearbyTowerMarkers = []; // For lazy-loaded towers from OpenCelliD
+let detectionRadiusCircle = null; // Visual radius showing IMEI detection zone
+let trackingTowers = new Set(); // Towers currently in detection range
 let currentLocation = null;
 let updateInterval = null;
 let locationWatchId = null;
@@ -291,6 +293,13 @@ async function fetchTowers() {
             // Update UI with Android GPS location
             updateLocationCard(currentLocation);
             updateDeviceMarker(currentLocation);
+            
+            // Update IMEI tracking visualization
+            const connectedTower = towers.find(t => t.registered);
+            if (connectedTower) {
+                updateDetectionRadius(currentLocation, connectedTower.signal_strength);
+                updateTrackingPanel(towers, currentLocation, calculateDetectionRadius(connectedTower.signal_strength));
+            }
             
             // Center map on location (first time only)
             if (map && isFirstLocationFix) {
@@ -638,6 +647,68 @@ function startPeriodicUpdates() {
 }
 
 /**
+ * Calculate IMEI detection radius based on signal strength
+ * 
+ * Uses propagation model to estimate how far nearby towers
+ * can detect device signals. Stronger signal = device is closer,
+ * so detection radius is smaller (fewer towers in range).
+ * 
+ * @param {number} signalDbm - Current signal strength in dBm
+ * @returns {number} Detection radius in meters
+ */
+function calculateDetectionRadius(signalDbm) {
+    // Path loss model: weaker signal = farther from tower
+    // Detection range: how far other towers can "hear" the device
+    // At -77 dBm (excellent): ~500m detection radius
+    // At -105 dBm (weak): ~3000m detection radius
+    
+    if (signalDbm >= -70) return 300;   // Very close, small detection zone
+    if (signalDbm >= -85) return 800;   // Good signal, moderate zone
+    if (signalDbm >= -95) return 1500;  // Fair signal, larger zone
+    if (signalDbm >= -105) return 2500; // Weak signal, wide detection
+    return 3500; // Very weak, maximum detection range
+}
+
+/**
+ * Update IMEI detection radius circle on map
+ * 
+ * Shows visual radius where nearby towers can detect device signals.
+ * Circle size varies based on current signal strength.
+ * 
+ * @param {Object} location - Current device location
+ * @param {number} signalDbm - Signal strength in dBm
+ */
+function updateDetectionRadius(location, signalDbm) {
+    if (!map) return;
+    
+    const radius = calculateDetectionRadius(signalDbm);
+    
+    // Remove old circle
+    if (detectionRadiusCircle) {
+        map.removeLayer(detectionRadiusCircle);
+    }
+    
+    // Add new detection radius circle
+    detectionRadiusCircle = L.circle([location.latitude, location.longitude], {
+        radius: radius,
+        color: '#ef4444',
+        fillColor: '#ef4444',
+        fillOpacity: 0.1,
+        weight: 2,
+        dashArray: '5, 5'
+    }).addTo(map);
+    
+    detectionRadiusCircle.bindPopup(`
+        <strong>🔴 IMEI Detection Zone</strong><br>
+        Radius: ${radius}m<br>
+        Signal: ${signalDbm} dBm<br>
+        Towers in this zone can detect your device
+    `);
+    
+    console.log(`🔴 IMEI detection radius: ${radius}m (signal: ${signalDbm} dBm)`);
+}
+
+/**
  * Update device marker on map
  * 
  * Creates or updates the pulsing marker showing device location.
@@ -763,6 +834,9 @@ function updateNearbyTowerMarkers(towers) {
                 iconSize: [30, 30]
             })
         }).addTo(map);
+        
+        // Store tower data on marker for later reference
+        marker._towerData = tower;
 
         // Build popup content
         let popupContent = `<strong>${icon} Tower Site</strong><br>`;
@@ -791,6 +865,205 @@ function updateNearbyTowerMarkers(towers) {
     });
 
     console.log(`🗺️ Added ${nearbyTowerMarkers.length} nearby tower markers`);
+}
+
+/**
+ * Calculate distance between two coordinates (Haversine formula)
+ * 
+ * @param {number} lat1 - Latitude 1
+ * @param {number} lon1 - Longitude 1
+ * @param {number} lat2 - Latitude 2
+ * @param {number} lon2 - Longitude 2
+ * @returns {number} Distance in meters
+ */
+function calculateDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371000; // Earth's radius in meters
+    const φ1 = lat1 * Math.PI / 180;
+    const φ2 = lat2 * Math.PI / 180;
+    const Δφ = (lat2 - lat1) * Math.PI / 180;
+    const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+        Math.cos(φ1) * Math.cos(φ2) *
+        Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return R * c; // Distance in meters
+}
+
+/**
+ * Calculate IMEI detection radius based on signal strength
+ * 
+ * Uses propagation model to estimate how far nearby towers
+ * can detect device signals. Stronger signal = device is closer,
+ * so detection radius is smaller (fewer towers in range).\n * 
+ * @param {number} signalDbm - Current signal strength in dBm
+ * @returns {number} Detection radius in meters
+ */
+function calculateDetectionRadius(signalDbm) {
+    // Path loss model: weaker signal = farther from tower
+    // Detection range: how far other towers can "hear" the device
+    // At -77 dBm (excellent): ~500m detection radius
+    // At -105 dBm (weak): ~3000m detection radius
+    
+    if (signalDbm >= -70) return 300;   // Very close, small detection zone
+    if (signalDbm >= -85) return 800;   // Good signal, moderate zone
+    if (signalDbm >= -95) return 1500;  // Fair signal, larger zone
+    if (signalDbm >= -105) return 2500; // Weak signal, wide detection
+    return 3500; // Very weak, maximum detection range
+}
+
+/**
+ * Update IMEI detection radius circle on map
+ * 
+ * Shows visual radius where nearby towers can detect device signals.
+ * Circle size varies based on current signal strength.
+ * 
+ * @param {Object} location - Current device location
+ * @param {number} signalDbm - Signal strength in dBm
+ */
+function updateDetectionRadius(location, signalDbm) {
+    if (!map) return;
+    
+    const radius = calculateDetectionRadius(signalDbm);
+    
+    // Remove old circle
+    if (detectionRadiusCircle) {
+        map.removeLayer(detectionRadiusCircle);
+    }
+    
+    // Add new detection radius circle
+    detectionRadiusCircle = L.circle([location.latitude, location.longitude], {
+        radius: radius,
+        color: '#ef4444',
+        fillColor: '#ef4444',
+        fillOpacity: 0.1,
+        weight: 2,
+        dashArray: '5, 5'
+    }).addTo(map);
+    
+    detectionRadiusCircle.bindPopup(`
+        <strong>🔴 IMEI Detection Zone</strong><br>
+        Radius: ${radius}m<br>
+        Signal: ${signalDbm} dBm<br>
+        Towers in this zone can detect your device
+    `);
+    
+    console.log(`🔴 IMEI detection radius: ${radius}m (signal: ${signalDbm} dBm)`);\n}
+
+/**
+ * Update tracking panel showing services detecting IMEI
+ * 
+ * Displays list of towers currently in detection range
+ * that can potentially see device IMEI and signals.
+ * 
+ * @param {Array} towers - All tower data
+ * @param {Object} location - Current device location
+ * @param {number} detectionRadius - Detection radius in meters
+ */
+function updateTrackingPanel(towers, location, detectionRadius) {
+    const trackingPanel = document.getElementById('tracking-panel');
+    if (!trackingPanel) return;
+    
+    trackingTowers.clear();
+    
+    // Find nearby towers in detection range
+    const towersInRange = nearbyTowerMarkers
+        .map(marker => {
+            const tower = marker._towerData;
+            if (!tower) {
+                // Extract tower data from marker popup
+                const lat = marker.getLatLng().lat;
+                const lng = marker.getLatLng().lng;
+                return {
+                    latitude: lat,
+                    longitude: lng,
+                    carrier: 'Unknown',
+                    network_type: 'Unknown'
+                };
+            }
+            
+            const distance = calculateDistance(
+                location.latitude, location.longitude,
+                tower.latitude, tower.longitude
+            );
+            
+            if (distance <= detectionRadius) {
+                trackingTowers.add(tower.cell_id || tower.cellid || Math.random());
+                return { ...tower, distance };
+            }
+            return null;
+        })
+        .filter(t => t !== null)
+        .sort((a, b) => a.distance - b.distance);
+    
+    // Check nearby markers that have position
+    nearbyTowerMarkers.forEach(marker => {
+        const lat = marker.getLatLng().lat;
+        const lng = marker.getLatLng().lng;
+        const distance = calculateDistance(
+            location.latitude, location.longitude,
+            lat, lng
+        );
+        
+        if (distance <= detectionRadius && !towersInRange.some(t => t.latitude === lat && t.longitude === lng)) {
+            towersInRange.push({
+                latitude: lat,
+                longitude: lng,
+                carrier: 'Unknown Operator',
+                network_type: 'Cellular',
+                distance: distance
+            });
+        }
+    });
+    
+    // Add currently connected tower (always tracking)
+    const connectedTower = towers.find(t => t.registered);
+    
+    let html = `
+        <h3>🔴 Services Detecting Your IMEI</h3>
+        <div class="tracking-warning">
+            ⚠️ These services can currently see your device identifier
+        </div>
+    `;
+    
+    // Connected tower (definitely tracking)
+    if (connectedTower) {
+        html += `
+            <div class="tracking-item active-connection">
+                <div class="tracking-badge">🔴 ACTIVE CONNECTION</div>
+                <strong>${escapeHtml(connectedTower.carrier || 'Unknown')}</strong><br>
+                <small>Cell ID: ${connectedTower.cell_id}</small><br>
+                <small>Signal: ${connectedTower.signal_strength} dBm</small><br>
+                <small>📍 Definitely tracking IMEI</small>
+            </div>
+        `;
+    }
+    
+    // Nearby towers in detection range
+    if (towersInRange.length > 0) {
+        html += `<h4>⚠️ Nearby Towers (${towersInRange.length} in range)</h4>`;
+        towersInRange.slice(0, 10).forEach(tower => {
+            html += `
+                <div class="tracking-item potential-detection">
+                    <div class="tracking-badge">⚠️ IN RANGE</div>
+                    <strong>${escapeHtml(tower.carrier || 'Unknown Operator')}</strong><br>
+                    <small>${tower.network_type || tower.radio || 'Cellular'}</small><br>
+                    <small>Distance: ${Math.round(tower.distance)}m</small><br>
+                    <small>📡 Can detect scanning signals</small>
+                </div>
+            `;
+        });
+        if (towersInRange.length > 10) {
+            html += `<p><small>...and ${towersInRange.length - 10} more</small></p>`;
+        }
+    } else {
+        html += `<p><small>No nearby towers in detection range</small></p>`;
+    }
+    
+    trackingPanel.innerHTML = html;
+    
+    console.log(`🔴 Tracking update: ${trackingTowers.size} towers can detect device`);
 }
 
 /**
