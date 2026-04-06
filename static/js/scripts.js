@@ -79,7 +79,7 @@ function initializeFullMap() {
     // Request location and fetch towers
     requestLocation();
     fetchTowers();
-    
+
     // Fetch WiFi AP positions (if available)
     fetchWiFiAccessPoints();
 
@@ -96,7 +96,7 @@ function initializeFullMap() {
 
     // Initial fetch of nearby towers  
     fetchNearbyTowers();
-    
+
     // Refresh WiFi APs every 30 seconds
     setInterval(fetchWiFiAccessPoints, 30000);
 }
@@ -963,7 +963,7 @@ function updateWiFiApMarkers(accessPoints) {
         popupContent += `<br><em style="color: #888; font-size: 0.85em;">Estimated from ${scanCount} scans with device orientation</em>`;
 
         marker.bindPopup(popupContent);
-        
+
         // Store marker and circle
         wifiApMarkers.push(marker);
         wifiApMarkers.push(accuracyCircle);

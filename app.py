@@ -142,6 +142,21 @@ def wifi_view():
     return render_template('wifi.html')
 
 
+@app.route('/wifi3d')
+def wifi3d_view():
+    """
+    WiFi 3D visualization view.
+    
+    Interactive 3D sphere showing WiFi networks in 3D space around
+    your device, with signal strength determining distance and
+    compass heading determining horizontal angle.
+    
+    Returns:
+        Rendered WiFi 3D HTML template
+    """
+    return render_template('wifi3d.html')
+
+
 @app.route('/health')
 def health_check():
     """

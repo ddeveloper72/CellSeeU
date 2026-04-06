@@ -1,0 +1,602 @@
+{% extends "base.html" %}
+
+{% block title %}WiFi 3D Visualization - CellSeeU{% endblock %}
+
+{% block extra_css %}
+<style>
+    #wifi3d-container {
+        width: 100%;
+        height: calc(100vh - 120px);
+        position: relative;
+        background: linear-gradient(135deg, #1e3a5f 0%, #2d1b3d 100%);
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
+    #wifi3d-canvas {
+        width: 100%;
+        height: 100%;
+        display: block;
+    }
+
+    .wifi3d-info {
+        position: absolute;
+        top: 20px;
+        left: 20px;
+        background: rgba(0, 0, 0, 0.8);
+        color: white;
+        padding: 15px;
+        border-radius: 8px;
+        font-family: monospace;
+        font-size: 12px;
+        max-width: 300px;
+        z-index: 10;
+    }
+
+    .wifi3d-info h3 {
+        margin: 0 0 10px 0;
+        font-size: 14px;
+        color: #4fc3f7;
+    }
+
+    .wifi3d-legend {
+        position: absolute;
+        bottom: 20px;
+        right: 20px;
+        background: rgba(0, 0, 0, 0.8);
+        color: white;
+        padding: 15px;
+        border-radius: 8px;
+        font-family: monospace;
+        font-size: 11px;
+        z-index: 10;
+    }
+
+    .legend-item {
+        display: flex;
+        align-items: center;
+        margin: 5px 0;
+    }
+
+    .legend-color {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        margin-right: 10px;
+        border: 2px solid rgba(255, 255, 255, 0.3);
+    }
+
+    .wifi3d-controls {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        background: rgba(0, 0, 0, 0.8);
+        color: white;
+        padding: 15px;
+        border-radius: 8px;
+        z-index: 10;
+    }
+
+    .wifi3d-controls button {
+        display: block;
+        width: 100%;
+        padding: 8px 15px;
+        margin: 5px 0;
+        background: #4fc3f7;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 12px;
+        transition: background 0.3s;
+    }
+
+    .wifi3d-controls button:hover {
+        background: #0288d1;
+    }
+
+    .loading-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.9);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 20px;
+        z-index: 20;
+    }
+
+    .loading-overlay.hidden {
+        display: none;
+    }
+
+    @media (max-width: 768px) {
+        .wifi3d-info,
+        .wifi3d-controls,
+        .wifi3d-legend {
+            font-size: 10px;
+            padding: 10px;
+        }
+
+        .wifi3d-controls {
+            top: auto;
+            bottom: 100px;
+            right: 10px;
+        }
+
+        .wifi3d-legend {
+            bottom: 10px;
+            right: 10px;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1 class="page-title">📡 WiFi 3D Visualization</h1>
+    <p class="page-subtitle">Interactive 3D view of WiFi signals around you</p>
+
+    <div id="wifi3d-container">
+        <div id="loading-overlay" class="loading-overlay">
+            <div>Loading 3D Scene...</div>
+        </div>
+
+        <canvas id="wifi3d-canvas"></canvas>
+
+        <div class="wifi3d-info">
+            <h3>🧭 Your Device</h3>
+            <div id="device-heading">Heading: --°</div>
+            <div id="device-location">Location: --</div>
+            <div id="networks-count">Networks: 0</div>
+            <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.2);">
+                <small>💡 Drag to rotate • Scroll to zoom • Click network for details</small>
+            </div>
+        </div>
+
+        <div class="wifi3d-controls">
+            <button id="btn-reset-view">Reset View</button>
+            <button id="btn-auto-rotate">Auto Rotate: OFF</button>
+            <button id="btn-show-labels">Labels: ON</button>
+            <button id="btn-refresh">Refresh Data</button>
+        </div>
+
+        <div class="wifi3d-legend">
+            <div style="font-weight: bold; margin-bottom: 8px;">Signal Strength</div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #00ff00;"></div>
+                <span>Excellent (-30 to -50 dBm)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #7fff00;"></div>
+                <span>Good (-50 to -60 dBm)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #ffff00;"></div>
+                <span>Fair (-60 to -70 dBm)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #ffa500;"></div>
+                <span>Weak (-70 to -80 dBm)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #ff0000;"></div>
+                <span>Very Weak (&lt; -80 dBm)</span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- Three.js for 3D rendering -->
+<script type="importmap">
+{
+    "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/"
+    }
+}
+</script>
+
+<script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+    // Global variables
+    let scene, camera, renderer, labelRenderer, controls;
+    let deviceMarker, compassRing;
+    let wifiNetworks = [];
+    let networkObjects = [];
+    let autoRotate = false;
+    let showLabels = true;
+
+    // Initialize 3D scene
+    function init3DScene() {
+        const container = document.getElementById('wifi3d-container');
+        const canvas = document.getElementById('wifi3d-canvas');
+
+        // Scene setup
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0a1a);
+        scene.fog = new THREE.Fog(0x0a0a1a, 50, 200);
+
+        // Camera setup
+        camera = new THREE.PerspectiveCamera(
+            75,
+            container.clientWidth / container.clientHeight,
+            0.1,
+            1000
+        );
+        camera.position.set(0, 30, 50);
+        camera.lookAt(0, 0, 0);
+
+        // Renderer setup
+        renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+
+        // Label renderer for network labels
+        labelRenderer = new CSS2DRenderer();
+        labelRenderer.setSize(container.clientWidth, container.clientHeight);
+        labelRenderer.domElement.style.position = 'absolute';
+        labelRenderer.domElement.style.top = '0';
+        labelRenderer.domElement.style.pointerEvents = 'none';
+        container.appendChild(labelRenderer.domElement);
+
+        // OrbitControls for camera movement
+        controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.minDistance = 20;
+        controls.maxDistance = 150;
+        controls.autoRotate = false;
+        controls.autoRotateSpeed = 1.0;
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0x404040, 2);
+        scene.add(ambientLight);
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+        directionalLight.position.set(50, 50, 50);
+        scene.add(directionalLight);
+
+        // Create device marker at center
+        createDeviceMarker();
+
+        // Create compass ring
+        createCompassRing();
+
+        // Create coordinate grid
+        createGrid();
+
+        // Create ambient particles
+        createAmbientParticles();
+
+        // Handle window resize
+        window.addEventListener('resize', onWindowResize);
+
+        // Start animation loop
+        animate();
+
+        // Hide loading overlay
+        document.getElementById('loading-overlay').classList.add('hidden');
+    }
+
+    function createDeviceMarker() {
+        // Device sphere (your phone)
+        const geometry = new THREE.SphereGeometry(2, 32, 32);
+        const material = new THREE.MeshStandardMaterial({
+            color: 0x4fc3f7,
+            emissive: 0x2196f3,
+            emissiveIntensity: 0.5,
+            metalness: 0.5,
+            roughness: 0.2
+        });
+        deviceMarker = new THREE.Mesh(geometry, material);
+        scene.add(deviceMarker);
+
+        // Pulsing glow effect
+        const glowGeometry = new THREE.SphereGeometry(2.5, 32, 32);
+        const glowMaterial = new THREE.MeshBasicMaterial({
+            color: 0x4fc3f7,
+            transparent: true,
+            opacity: 0.3
+        });
+        const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+        deviceMarker.add(glow);
+
+        // Add antenna
+        const antennaGeometry = new THREE.CylinderGeometry(0.1, 0.1, 3, 8);
+        const antennaMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
+        const antenna = new THREE.Mesh(antennaGeometry, antennaMaterial);
+        antenna.position.y = 2.5;
+        deviceMarker.add(antenna);
+    }
+
+    function createCompassRing() {
+        const ringGeometry = new THREE.RingGeometry(18, 20, 64);
+        const ringMaterial = new THREE.MeshBasicMaterial({
+            color: 0x4fc3f7,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.3
+        });
+        compassRing = new THREE.Mesh(ringGeometry, ringMaterial);
+        compassRing.rotation.x = Math.PI / 2;
+        scene.add(compassRing);
+
+        // Add cardinal direction markers
+        const directions = [
+            { angle: 0, label: 'N', color: 0xff0000 },
+            { angle: Math.PI / 2, label: 'E', color: 0x00ff00 },
+            { angle: Math.PI, label: 'S', color: 0xffffff },
+            { angle: Math.PI * 1.5, label: 'W', color: 0x00ffff }
+        ];
+
+        directions.forEach(dir => {
+            const x = Math.sin(dir.angle) * 22;
+            const z = Math.cos(dir.angle) * 22;
+            
+            const markerGeometry = new THREE.SphereGeometry(0.8, 16, 16);
+            const markerMaterial = new THREE.MeshBasicMaterial({ color: dir.color });
+            const marker = new THREE.Mesh(markerGeometry, markerMaterial);
+            marker.position.set(x, 0, z);
+            scene.add(marker);
+
+            // Add label
+            const labelDiv = document.createElement('div');
+            labelDiv.className = 'label';
+            labelDiv.textContent = dir.label;
+            labelDiv.style.color = '#' + dir.color.toString(16).padStart(6, '0');
+            labelDiv.style.fontWeight = 'bold';
+            labelDiv.style.fontSize = '20px';
+            labelDiv.style.textShadow = '0 0 5px black';
+            const label = new CSS2DObject(labelDiv);
+            label.position.set(x * 1.2, 0, z * 1.2);
+            scene.add(label);
+        });
+    }
+
+    function createGrid() {
+        const gridHelper = new THREE.GridHelper(100, 20, 0x444444, 0x222222);
+        gridHelper.position.y = -0.1;
+        scene.add(gridHelper);
+
+        // Vertical axis
+        const axisGeometry = new THREE.CylinderGeometry(0.2, 0.2, 80, 16);
+        const axisMaterial = new THREE.MeshBasicMaterial({
+            color: 0x888888,
+            transparent: true,
+            opacity: 0.5
+        });
+        const axis = new THREE.Mesh(axisGeometry, axisMaterial);
+        axis.position.y = 0;
+        scene.add(axis);
+    }
+
+    function createAmbientParticles() {
+        const particleCount = 500;
+        const positions = new Float32Array(particleCount * 3);
+        
+        for (let i = 0; i < particleCount * 3; i += 3) {
+            positions[i] = (Math.random() - 0.5) * 200;
+            positions[i + 1] = (Math.random() - 0.5) * 200;
+            positions[i + 2] = (Math.random() - 0.5) * 200;
+        }
+
+        const particleGeometry = new THREE.BufferGeometry();
+        particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+        const particleMaterial = new THREE.PointsMaterial({
+            color: 0x4fc3f7,
+            size: 0.5,
+            transparent: true,
+            opacity: 0.3
+        });
+
+        const particles = new THREE.Points(particleGeometry, particleMaterial);
+        scene.add(particles);
+    }
+
+    function getSignalColor(rssi) {
+        if (rssi >= -50) return 0x00ff00;  // Excellent (green)
+        if (rssi >= -60) return 0x7fff00;  // Good (chartreuse)
+        if (rssi >= -70) return 0xffff00;  // Fair (yellow)
+        if (rssi >= -80) return 0xffa500;  // Weak (orange)
+        return 0xff0000;                    // Very weak (red)
+    }
+
+    function calculateDistance(rssi) {
+        // Convert RSSI to approximate distance (closer signal = farther from center for visibility)
+        // Strong signal (-30 dBm) = 15 units from center
+        // Weak signal (-90 dBm) = 45 units from center
+        const minRSSI = -90;
+        const maxRSSI = -30;
+        const minDistance = 15;
+        const maxDistance = 45;
+        
+        const normalized = (rssi - minRSSI) / (maxRSSI - minRSSI);
+        return maxDistance - (normalized * (maxDistance - minDistance));
+    }
+
+    function updateWiFiNetworks(networks, deviceHeading = 0) {
+        // Clear existing network objects
+        networkObjects.forEach(obj => {
+            scene.remove(obj.mesh);
+            if (obj.label) scene.remove(obj.label);
+            if (obj.beam) scene.remove(obj.beam);
+        });
+        networkObjects = [];
+
+        if (!networks || networks.length === 0) {
+            document.getElementById('networks-count').textContent = 'Networks: 0';
+            return;
+        }
+
+        // Update count
+        document.getElementById('networks-count').textContent = `Networks: ${networks.length}`;
+
+        // Create 3D objects for each network
+        networks.forEach((network, index) => {
+            const rssi = network.signal_strength || -70;
+            const distance = calculateDistance(rssi);
+            const color = getSignalColor(rssi);
+
+            // Distribute networks in 3D space
+            // Use a spherical distribution with some randomization
+            const angleHorizontal = (index / networks.length) * Math.PI * 2;
+            const angleVertical = (Math.random() - 0.5) * Math.PI * 0.6; // ±54 degrees from horizontal
+
+            const x = Math.cos(angleHorizontal) * Math.cos(angleVertical) * distance;
+            const y = Math.sin(angleVertical) * distance;
+            const z = Math.sin(angleHorizontal) * Math.cos(angleVertical) * distance;
+
+            // Create WiFi network sphere
+            const geometry = new THREE.SphereGeometry(1.5, 16, 16);
+            const material = new THREE.MeshStandardMaterial({
+                color: color,
+                emissive: color,
+                emissiveIntensity: 0.5,
+                metalness: 0.3,
+                roughness: 0.7
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.position.set(x, y, z);
+            scene.add(mesh);
+
+            // Create signal beam from device to network
+            const beamGeometry = new THREE.CylinderGeometry(0.2, 0.4, distance, 8);
+            const beamMaterial = new THREE.MeshBasicMaterial({
+                color: color,
+                transparent: true,
+                opacity: 0.2
+            });
+            const beam = new THREE.Mesh(beamGeometry, beamMaterial);
+            
+            // Position and rotate beam to connect device to network
+            beam.position.set(x / 2, y / 2, z / 2);
+            beam.lookAt(x, y, z);
+            beam.rotateX(Math.PI / 2);
+            scene.add(beam);
+
+            // Create label
+            let label = null;
+            if (showLabels) {
+                const labelDiv = document.createElement('div');
+                labelDiv.className = 'label';
+                labelDiv.style.color = 'white';
+                labelDiv.style.fontSize = '12px';
+                labelDiv.style.background = 'rgba(0,0,0,0.7)';
+                labelDiv.style.padding = '2px 6px';
+                labelDiv.style.borderRadius = '3px';
+                labelDiv.style.textShadow = '0 0 3px black';
+                labelDiv.style.whiteSpace = 'nowrap';
+                labelDiv.textContent = `${network.ssid || '<Hidden>'} (${rssi} dBm)`;
+                label = new CSS2DObject(labelDiv);
+                label.position.set(x, y + 3, z);
+                scene.add(label);
+            }
+
+            networkObjects.push({ mesh, beam, label, network });
+        });
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+
+        // Update controls
+        controls.update();
+
+        // Auto-rotate if enabled
+        if (autoRotate) {
+            scene.rotation.y += 0.001;
+        }
+
+        // Animate device glow
+        if (deviceMarker && deviceMarker.children[0]) {
+            const glow = deviceMarker.children[0];
+            glow.scale.setScalar(1 + Math.sin(Date.now() * 0.003) * 0.1);
+        }
+
+        // Render scene
+        renderer.render(scene, camera);
+        labelRenderer.render(scene, camera);
+    }
+
+    function onWindowResize() {
+        const container = document.getElementById('wifi3d-container');
+        camera.aspect = container.clientWidth / container.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        labelRenderer.setSize(container.clientWidth, container.clientHeight);
+    }
+
+    // Fetch WiFi data from API
+    async function fetchWiFiData() {
+        try {
+            const response = await fetch('/api/wifi');
+            const data = await response.json();
+            
+            wifiNetworks = data.networks || [];
+            
+            // Update device info
+            if (data.device_location) {
+                const loc = data.device_location;
+                document.getElementById('device-heading').textContent = 
+                    `Heading: ${loc.heading?.toFixed(1) || '--'}° ${loc.cardinal_direction || ''}`;
+                document.getElementById('device-location').textContent = 
+                    `Location: ${loc.latitude?.toFixed(4)}, ${loc.longitude?.toFixed(4)}`;
+                
+                updateWiFiNetworks(wifiNetworks, loc.heading || 0);
+            } else {
+                updateWiFiNetworks(wifiNetworks);
+            }
+        } catch (error) {
+            console.error('Error fetching WiFi data:', error);
+        }
+    }
+
+    // Button event listeners
+    document.getElementById('btn-reset-view').addEventListener('click', () => {
+        camera.position.set(0, 30, 50);
+        controls.reset();
+    });
+
+    document.getElementById('btn-auto-rotate').addEventListener('click', (e) => {
+        autoRotate = !autoRotate;
+        e.target.textContent = `Auto Rotate: ${autoRotate ? 'ON' : 'OFF'}`;
+    });
+
+    document.getElementById('btn-show-labels').addEventListener('click', (e) => {
+        showLabels = !showLabels;
+        e.target.textContent = `Labels: ${showLabels ? 'ON' : 'OFF'}`;
+        fetchWiFiData(); // Refresh to update labels
+    });
+
+    document.getElementById('btn-refresh').addEventListener('click', () => {
+        fetchWiFiData();
+    });
+
+    // Initialize on load
+    window.addEventListener('DOMContentLoaded', () => {
+        init3DScene();
+        fetchWiFiData();
+        
+        // Auto-refresh every 15 seconds
+        setInterval(fetchWiFiData, 15000);
+    });
+</script>
+
+<style>
+    .label {
+        pointer-events: none;
+        user-select: none;
+    }
+</style>
+{% endblock %}
