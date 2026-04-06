@@ -9,6 +9,10 @@ from flask import Blueprint, jsonify, request
 from datetime import datetime, timezone
 from functools import wraps
 import time
+import logging
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 # Create API blueprint
 api = Blueprint('api', __name__, url_prefix='/api')
@@ -200,10 +204,13 @@ def get_towers():
     # Apply limit
     towers = towers[:limit]
     
+    global _device_location
+    
     return jsonify({
         'towers': towers,
         'count': len(towers),
         'data_source': 'real' if _real_tower_data else 'mock',
+        'device_location': _device_location,
         'last_update': _last_update_time.isoformat() if _last_update_time else None,
         'timestamp': datetime.now(timezone.utc).isoformat()
     })
@@ -242,6 +249,95 @@ def get_tower_details(cell_id):
         'error': 'Tower not found',
         'cell_id': cell_id
     }), 404
+
+
+@api.route('/towers/nearby', methods=['GET'])
+@rate_limit
+def get_nearby_towers():
+    """
+    Get all cell towers within a geographic area (lazy loading for map).
+    
+    Query Parameters:
+        bbox: Bounding box as "min_lat,min_lon,max_lat,max_lon"
+        OR
+        lat, lon, radius: Center point and radius in km
+    
+    Returns:
+        JSON with list of towers in the area from OpenCelliD database
+    
+    Example:
+        GET /api/towers/nearby?bbox=53.28,-6.70,53.32,-6.64
+        GET /api/towers/nearby?lat=53.29&lon=-6.69&radius=2
+    """
+    from src.services.opencellid_service import get_towers_in_area, get_nearby_towers
+    
+    # Check for bounding box
+    bbox = request.args.get('bbox')
+    if bbox:
+        try:
+            coords = [float(x.strip()) for x in bbox.split(',')]
+            if len(coords) != 4:
+                raise ValueError("bbox must have 4 coordinates")
+            
+            min_lat, min_lon, max_lat, max_lon = coords
+            
+            # Validate coordinates
+            if not (-90 <= min_lat <= 90 and -90 <= max_lat <= 90):
+                return jsonify({'error': 'Invalid latitude values'}), 400
+            if not (-180 <= min_lon <= 180 and -180 <= max_lon <= 180):
+                return jsonify({'error': 'Invalid longitude values'}), 400
+            if min_lat >= max_lat or min_lon >= max_lon:
+                return jsonify({'error': 'Invalid bounding box'}), 400
+            
+            towers = get_towers_in_area(min_lat, min_lon, max_lat, max_lon)
+            
+            return jsonify({
+                'towers': towers,
+                'count': len(towers),
+                'query_type': 'bbox',
+                'bbox': {'min_lat': min_lat, 'min_lon': min_lon, 'max_lat': max_lat, 'max_lon': max_lon}
+            })
+            
+        except ValueError as e:
+            return jsonify({'error': f'Invalid bbox parameter: {str(e)}'}), 400
+    
+    # Check for lat/lon/radius
+    lat = request.args.get('lat')
+    lon = request.args.get('lon')
+    radius = request.args.get('radius', '5.0')
+    
+    if lat and lon:
+        try:
+            lat = float(lat)
+            lon = float(lon)
+            radius = float(radius)
+            
+            # Validate coordinates
+            if not (-90 <= lat <= 90):
+                return jsonify({'error': 'Invalid latitude'}), 400
+            if not (-180 <= lon <= 180):
+                return jsonify({'error': 'Invalid longitude'}), 400
+            if not (0.1 <= radius <= 50):
+                return jsonify({'error': 'Radius must be between 0.1 and 50 km'}), 400
+            
+            towers = get_nearby_towers(lat, lon, radius)
+            
+            return jsonify({
+                'towers': towers,
+                'count': len(towers),
+                'query_type': 'radius',
+                'center': {'lat': lat, 'lon': lon},
+                'radius_km': radius
+            })
+            
+        except ValueError as e:
+            return jsonify({'error': f'Invalid coordinates: {str(e)}'}), 400
+    
+    # No valid parameters
+    return jsonify({
+        'error': 'Missing parameters',
+        'message': 'Provide either bbox or lat/lon/radius'
+    }), 400
 
 
 @api.route('/location', methods=['GET'])
@@ -366,8 +462,16 @@ def upload_towers():
         }), 400
     
     try:
-        # Import carrier lookup to enrich tower data
+        # Import carrier lookup and tower location services
         from src.services.carrier_lookup import get_carrier_name
+        from src.services.tower_location import get_tower_location
+        
+        logger.info(f"📡 Processing {len(data['towers'])} tower(s) from device")
+        
+        # Get device location if provided
+        device_loc = data.get('device_location')
+        if device_loc:
+            logger.info(f"📍 Device location: {device_loc.get('latitude'):.6f}, {device_loc.get('longitude'):.6f}")
         
         # Process and enrich tower data
         enriched_towers = []
@@ -392,7 +496,34 @@ def upload_towers():
                 else:
                     tower['signal_bars'] = 0
             
-            # Add timestamp ifnot provided
+            # Get tower location (OpenCelliD lookup with fallback to estimation)
+            if 'latitude' not in tower and 'longitude' not in tower:
+                mcc = tower.get('mcc', 0)
+                mnc = tower.get('mnc', 0)
+                lac = tower.get('tac', tower.get('lac', 0))  # TAC for LTE, LAC for GSM/WCDMA
+                cell_id = tower.get('cell_id', 0)
+                
+                device_lat = device_loc.get('latitude') if device_loc else None
+                device_lon = device_loc.get('longitude') if device_loc else None
+                signal = tower.get('signal_strength')
+                
+                logger.info(f"🔍 Looking up tower: MCC={mcc}, MNC={mnc}, LAC={lac}, CID={cell_id}")
+                
+                location_data = get_tower_location(
+                    mcc, mnc, lac, cell_id,
+                    device_lat, device_lon, signal
+                )
+                
+                if location_data.get('latitude'):
+                    tower['latitude'] = location_data['latitude']
+                    tower['longitude'] = location_data['longitude']
+                    tower['distance_meters'] = location_data['distance_meters']
+                    tower['location_source'] = location_data['source']
+                    logger.info(f"✓ Tower coordinates: {location_data['latitude']:.6f}, {location_data['longitude']:.6f} (source: {location_data['source']})")
+                else:
+                    logger.warning(f"✗ No coordinates found for tower {cell_id}")
+            
+            # Add timestamp if not provided
             if 'detected_at' not in tower:
                 tower['detected_at'] = datetime.now(timezone.utc).isoformat()
             

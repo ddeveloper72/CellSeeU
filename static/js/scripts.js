@@ -22,6 +22,7 @@ const CONFIG = {
 let map = null;
 let deviceMarker = null;
 let towerMarkers = [];
+let nearbyTowerMarkers = []; // For lazy-loaded towers from OpenCelliD
 let currentLocation = null;
 let updateInterval = null;
 let locationWatchId = null;
@@ -81,6 +82,14 @@ function initializeFullMap() {
 
     // Start periodic updates
     startPeriodicUpdates();
+    
+    // Lazy load nearby towers when map moves
+    map.on('moveend', function() {
+        fetchNearbyTowers();
+    });
+    
+    // Initial fetch of nearby towers
+    fetchNearbyTowers();
 }
 
 /**
@@ -108,6 +117,8 @@ function initializeMiniMap() {
         subdomains: 'abcd',
         maxZoom: 19
     }).addTo(map);
+    
+    // Nearby towers will be fetched automatically when location is set
 }
 
 /**
@@ -265,12 +276,166 @@ async function fetchTowers() {
         updateTowerList(towers);
         updateTowerMarkers(towers);
         updateStats(towers);
+        
+        // Use device location from Android app if available
+        if (data.device_location && data.device_location.latitude) {
+            console.log('📍 Using location from Android app:', data.device_location);
+            currentLocation = {
+                latitude: data.device_location.latitude,
+                longitude: data.device_location.longitude,
+                accuracy: data.device_location.accuracy || 0,
+                altitude: data.device_location.altitude || 0,
+                timestamp: new Date().toISOString()
+            };
+            
+            // Update UI with Android GPS location
+            updateLocationCard(currentLocation);
+            updateDeviceMarker(currentLocation);
+            
+            // Center map on location (first time only)
+            if (map && isFirstLocationFix) {
+                map.setView([currentLocation.latitude, currentLocation.longitude], 15);
+                isFirstLocationFix = false;
+                console.log('📍 Map centered on your location from Android');
+                
+                // Load nearby towers now that we have user location
+                fetchNearbyTowers();
+            }
+        } else if (!currentLocation) {
+            // Fallback to browser geolocation if no Android location
+            console.log('📍 No location from Android, trying browser GPS...');
+            requestLocation();
+        }
 
     } catch (error) {
         console.error('❌ Error fetching towers:', error);
         // Don't expose error details to user
         showError('Unable to fetch tower data. Please try again.');
     }
+}
+
+/**
+ * Fetch nearby cell towers visible in current map view (lazy loading)
+ * 
+ * Calls OpenCelliD API to get all towers within the visible map bounds.
+ * Displays them as gray markers (potential towers to connect to).
+ */
+async function fetchNearbyTowers() {
+    if (!map) {
+        console.log('⏸️ Map not initialized, skipping nearby tower fetch');
+        return;
+    }
+    
+    try {
+        // Get map bounds
+        const bounds = map.getBounds();
+        const minLat = bounds.getSouth();
+        const maxLat = bounds.getNorth();
+        const minLon = bounds.getWest();
+        const maxLon = bounds.getEast();
+        
+        console.log(`🗺️ Fetching towers in view: ${minLat.toFixed(3)},${minLon.toFixed(3)} to ${maxLat.toFixed(3)},${maxLon.toFixed(3)}`);
+        
+        // Fetch from API
+        const response = await fetch(
+            `${CONFIG.apiBaseUrl}/towers/nearby?bbox=${minLat},${minLon},${maxLat},${maxLon}`
+        );
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        
+        const data = await response.json();
+        const towers = data.towers || [];
+        
+        console.log(`📡 Found ${towers.length} nearby towers from OpenCelliD`);
+        
+        // Cluster nearby cells into tower sites (cells within 100m = same tower)
+        const clusteredTowers = clusterNearbyTowers(towers, 0.1); // 0.1 km = 100m
+        console.log(`📍 Clustered ${towers.length} cells into ${clusteredTowers.length} tower sites`);
+        
+        // Update map with clustered tower sites
+        updateNearbyTowerMarkers(clusteredTowers);
+        
+    } catch (error) {
+        console.error('⚠️ Error fetching nearby towers:', error);
+        // Fail silently - this is a nice-to-have feature
+    }
+}
+
+/**
+ * Cluster nearby cells into physical tower locations
+ * 
+ * Groups cells that are within distance threshold (likely same physical tower).
+ * A single tower site often has multiple cells (sectors, bands, technologies).
+ * 
+ * @param {Array} towers - Individual cell records from OpenCelliD
+ * @param {number} distanceThresholdKm - Max distance to consider same tower (default: 0.1km = 100m)
+ * @returns {Array} Clustered tower sites with cell counts
+ */
+function clusterNearbyTowers(towers, distanceThresholdKm = 0.1) {
+    if (!towers || towers.length === 0) return [];
+    
+    const clusters = [];
+    const used = new Set();
+    
+    // Helper: Calculate distance between two points (Haversine formula)
+    function distance(lat1, lon1, lat2, lon2) {
+        const R = 6371; // Earth radius in km
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                  Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                  Math.sin(dLon/2) * Math.sin(dLon/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        return R * c;
+    }
+    
+    // Cluster towers by proximity
+    towers.forEach((tower, i) => {
+        if (used.has(i)) return;
+        
+        // Create new cluster with this tower as center
+        const cluster = {
+            latitude: tower.latitude,
+            longitude: tower.longitude,
+            cells: [tower],
+            carriers: new Set([tower.carrier]),
+            technologies: new Set([tower.network_type]),
+            cell_count: 1,
+            location_source: tower.location_source,
+            tower_type: tower.tower_type
+        };
+        
+        used.add(i);
+        
+        // Find nearby towers (within threshold)
+        towers.forEach((other, j) => {
+            if (used.has(j)) return;
+            
+            const dist = distance(tower.latitude, tower.longitude, other.latitude, other.longitude);
+            
+            if (dist <= distanceThresholdKm) {
+                cluster.cells.push(other);
+                cluster.carriers.add(other.carrier);
+                cluster.technologies.add(other.network_type);
+                cluster.cell_count++;
+                used.add(j);
+                
+                // Update cluster center (average position)
+                cluster.latitude = cluster.cells.reduce((sum, c) => sum + c.latitude, 0) / cluster.cells.length;
+                cluster.longitude = cluster.cells.reduce((sum, c) => sum + c.longitude, 0) / cluster.cells.length;
+            }
+        });
+        
+        // Convert Sets to Arrays for display
+        cluster.carriers = Array.from(cluster.carriers);
+        cluster.technologies = Array.from(cluster.technologies);
+        
+        clusters.push(cluster);
+    });
+    
+    return clusters;
 }
 
 /**
@@ -554,9 +719,9 @@ function updateTowerMarkers(towers) {
 
         towerMarkers.push(marker);
     });
-    
-   console.log(`🗺️ Added ${towerMarkers.length} tower markers to map`);
-    
+
+    console.log(`🗺️ Added ${towerMarkers.length} tower markers to map`);
+
     // Auto-fit map bounds to show all towers (if we have any)
     if (towerMarkers.length > 0) {
         const bounds = L.latLngBounds(
@@ -564,6 +729,68 @@ function updateTowerMarkers(towers) {
         );
         map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
     }
+}
+
+/**
+ * Update nearby tower markers (lazy-loaded from OpenCelliD)
+ * 
+ * Displays potential towers device could connect to in gray.
+ * Different from connected towers shown in color.
+ * Towers are clustered - each marker represents a physical site with multiple cells.
+ * 
+ * @param {Array} towers - List of clustered tower sites
+ */
+function updateNearbyTowerMarkers(towers) {
+    if (!map) return;
+
+    // Remove existing nearby markers
+    nearbyTowerMarkers.forEach(marker => map.removeLayer(marker));
+    nearbyTowerMarkers = [];
+
+    // Add new markers for each nearby tower site
+    towers.forEach(tower => {
+        if (!tower.latitude || !tower.longitude) return;
+
+        const icon = tower.tower_type === 'NON_TERRESTRIAL_SATELLITE' ? '🛰️' : '📡';
+        const cellCount = tower.cell_count || 1;
+        const carriers = tower.carriers || [tower.carrier];
+        const technologies = tower.technologies || [tower.network_type];
+
+        const marker = L.marker([tower.latitude, tower.longitude], {
+            icon: L.divIcon({
+                className: 'nearby-tower-marker',
+                html: `<div>${icon}${cellCount > 1 ? '<span class="cell-count">' + cellCount + '</span>' : ''}</div>`,
+                iconSize: [30, 30]
+            })
+        }).addTo(map);
+
+        // Build popup content
+        let popupContent = `<strong>${icon} Tower Site</strong><br>`;
+        popupContent += `📱 ${cellCount} cell${cellCount > 1 ? 's' : ''}<br>`;
+        popupContent += `📡 ${carriers.join(', ')}<br>`;
+        popupContent += `🔧 ${technologies.join(', ')}<br>`;
+        
+        // If cluster, show cell details
+        if (tower.cells && tower.cells.length > 1) {
+            popupContent += `<br><em style="font-size: 0.9em;">Cells at this site:</em><br>`;
+            popupContent += `<div style="max-height: 150px; overflow-y: auto; font-size: 0.85em;">`;
+            tower.cells.slice(0, 10).forEach(cell => {
+                const carrierShort = (cell.carrier || '').replace(' Ireland', '');
+                popupContent += `• ${cell.network_type} - ${carrierShort} (${cell.cell_id})<br>`;
+            });
+            if (tower.cells.length > 10) {
+                popupContent += `<em>...and ${tower.cells.length - 10} more</em><br>`;
+            }
+            popupContent += `</div>`;
+        }
+        
+        popupContent += `<br><em style="color: #888;">From OpenCelliD</em>`;
+
+        marker.bindPopup(popupContent);
+        nearbyTowerMarkers.push(marker);
+    });
+
+    console.log(`🗺️ Added ${nearbyTowerMarkers.length} nearby tower markers`);
 }
 
 /**
