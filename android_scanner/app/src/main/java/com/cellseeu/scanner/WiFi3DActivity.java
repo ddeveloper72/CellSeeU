@@ -563,68 +563,54 @@ public class WiFi3DActivity extends AppCompatActivity {
     }
     
     /**
-     * Add a label with a visual connector line to its WiFi source
+     * Add a label with a 2D connector line to its WiFi source
      */
     private void addLabelWithConnector(WiFi3DRenderer.NetworkScreenPosition pos) {
-        // Label position - VERY close to sphere for tighter connection
-        int labelOffsetX = 8;   // Minimal horizontal offset
-        int labelOffsetY = -12; // Minimal vertical offset (negative = upward)
+        // Label position - close to sphere
+        int labelOffsetX = 40;   // Offset to the right
+        int labelOffsetY = -35;  // Offset upward (negative = up)
         
         int labelX = (int)pos.screenX + labelOffsetX;
         int labelY = (int)pos.screenY + labelOffsetY;
         
-        // FIXED APPROACH: Create connector with proper coordinate system
-        // Since labelOffsetY is negative (drawing upward), we need to adjust the view position
+        // Create a 2D connector line in screen space (CORRECT APPROACH!)
+        // This View draws from sphere screen position to label position
         View connector = new View(this) {
             @Override
             protected void onDraw(android.graphics.Canvas canvas) {
                 super.onDraw(canvas);
                 
-                // Paint for the connector line
                 android.graphics.Paint paint = new android.graphics.Paint();
-                paint.setColor(0xFFFFFFFF);  // Pure white
-                paint.setStrokeWidth(4);  // Thick line
                 paint.setAntiAlias(true);
                 
-                // Since Y is negative, we position view above sphere and draw downward
-                // Draw from label position (top of view) to sphere (bottom)
-                float startX = Math.abs(labelOffsetX);  // Label X position within view
-                float startY = 0;  // Top of view (label is here)
-                float endX = Math.abs(labelOffsetX);    // Same X
-                float endY = Math.abs(labelOffsetY);    // Distance down to sphere
+                // Draw line from sphere (0,0 in this view) to label
+                paint.setColor(0xFFFFFFFF);  // White line
+                paint.setStrokeWidth(2);
+                canvas.drawLine(0, 0, labelOffsetX, labelOffsetY, paint);
                 
-                // Draw the connector line
-                canvas.drawLine(startX, startY, endX, endY, paint);
-                
-                // Draw yellow anchor circle at sphere position
+                // Draw anchor circle at sphere
                 paint.setStyle(android.graphics.Paint.Style.FILL);
-                paint.setColor(0xFFFFFF00);  // Bright yellow
-                canvas.drawCircle(endX, endY, 8, paint);
+                paint.setColor(0xFFFFFF00);  // Yellow anchor
+                canvas.drawCircle(0, 0, 6, paint);
                 
-                // White outline on anchor
+                // White outline
                 paint.setStyle(android.graphics.Paint.Style.STROKE);
                 paint.setColor(0xFFFFFFFF);
-                paint.setStrokeWidth(2);
-                canvas.drawCircle(endX, endY, 8, paint);
+                paint.setStrokeWidth(1);
+                canvas.drawCircle(0, 0, 6, paint);
             }
         };
         
-        // CRITICAL: Enable drawing
+        // Enable drawing
         connector.setWillNotDraw(false);
-        connector.setBackgroundColor(0x00000000);  // Transparent background
         
-        // Position view ABOVE the sphere since we're drawing upward
-        // View needs to encompass both the label position (top) and sphere (bottom)
-        int viewWidth = Math.abs(labelOffsetX) + 30;
-        int viewHeight = Math.abs(labelOffsetY)+ 30;
-        
+        // Position connector at sphere, make it big enough to reach label
         FrameLayout.LayoutParams connectorParams = new FrameLayout.LayoutParams(
-                viewWidth,
-                viewHeight
+                Math.abs(labelOffsetX) + 20,
+                Math.abs(labelOffsetY) + 20
         );
-        // Position view at label location (above sphere)
-        connectorParams.leftMargin = labelX - Math.abs(labelOffsetX);
-        connectorParams.topMargin = labelY;
+        connectorParams.leftMargin = (int)pos.screenX;
+        connectorParams.topMargin = (int)pos.screenY + labelOffsetY;  // Top of line
         connector.setLayoutParams(connectorParams);
         labelOverlay.addView(connector);
         
@@ -632,15 +618,15 @@ public class WiFi3DActivity extends AppCompatActivity {
         TextView label = new TextView(this);
         label.setText(pos.network.getShortLabel(labelMode));
         label.setTextColor(0xFFFFFFFF);
-        label.setTextSize(11);
-        label.setBackgroundColor(0xDD000000);  // Slightly more opaque
+        label.setTextSize(12);
+        label.setBackgroundColor(0xDD000000);
         label.setPadding(8, 4, 8, 4);
         label.setShadowLayer(3, 0, 0, 0xFF000000);
         
         // Add colored border matching signal strength
         android.graphics.drawable.GradientDrawable border = new android.graphics.drawable.GradientDrawable();
         border.setColor(0xDD000000);  // Background
-        border.setStroke(2, android.graphics.Color.rgb(
+        border.setStroke(3, android.graphics.Color.rgb(
                 (int)(pos.network.color[0] * 255),
                 (int)(pos.network.color[1] * 255),
                 (int)(pos.network.color[2] * 255)

@@ -171,36 +171,8 @@ public class WiFi3DRenderer implements GLSurfaceView.Renderer {
         drawObject(networkSphere.getVertexBuffer(), networkSphere.getVertexCount(),
                   networkColor, GLES20.GL_TRIANGLE_FAN);
         
-        // Draw label connector line (angled to point toward label position)
-        // Labels are offset (+15, -25) in screen space = upper-right
-        // Lines need to be MUCH LONGER to reach the distant labels
-        float leaderHeight = 2.5f;         // Extended upward reach
-        float leaderOffsetRight = 1.0f;    // Extended rightward reach
-        float leaderOffsetForward = 0.6f;  // Extended toward camera
-        
-        float[] leaderVertices = {
-                pos[0], pos[1], pos[2],    // Start at sphere position
-                pos[0] + leaderOffsetRight,  // End: offset to the right
-                pos[1] + leaderHeight,       // End: upward
-                pos[2] + leaderOffsetForward // End: slightly toward camera
-        };
-        
-        FloatBuffer leaderBuffer = ByteBuffer.allocateDirect(leaderVertices.length * 4)
-                .order(ByteOrder.nativeOrder()).asFloatBuffer();
-        leaderBuffer.put(leaderVertices).position(0);
-        
-        Matrix.setIdentityM(modelMatrix, 0);
-        // Bright white line - very visible!
-        float[] leaderColor = new float[]{1.0f, 1.0f, 1.0f, 1.0f};
-        drawObject(leaderBuffer, 2, leaderColor, GLES20.GL_LINES);
-        
-        // Draw bright anchor point at sphere (yellow dot)
-        Matrix.setIdentityM(modelMatrix, 0);
-        Matrix.translateM(modelMatrix, 0, pos[0], pos[1], pos[2]);
-        Matrix.scaleM(modelMatrix, 0, 0.15f, 0.15f, 0.15f);  // Small dot
-        float[] anchorColor = new float[]{1.0f, 1.0f, 0.0f, 1.0f};  // Yellow
-        drawObject(networkSphere.getVertexBuffer(), networkSphere.getVertexCount(),
-                  anchorColor, GLES20.GL_TRIANGLE_FAN);
+        // Note: Connector lines now drawn in 2D screen space (WiFi3DActivity)
+        // 3D lines removed - they can't properly connect to 2D labels due to coordinate system mismatch
     }
     
     private void drawObject(FloatBuffer vertexBuffer, int vertexCount, float[] color, int drawMode) {
