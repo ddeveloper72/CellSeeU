@@ -63,7 +63,8 @@
             🔄 Refresh WiFi List
         </button>
         <p class="subtitle" style="margin-top: 1rem;">
-            <small>💡 WiFi data comes from your Android device. Use the CellSeeU Scanner app to collect WiFi information.</small>
+            <small>💡 WiFi data comes from your Android device. Use the CellSeeU Scanner app to collect WiFi
+                information.</small>
         </p>
     </section>
 </div>
@@ -78,15 +79,15 @@
 
     function initializeWiFiPage() {
         console.log('📶 Initializing WiFi page');
-        
+
         fetchWiFiNetworks();
-        
+
         // Setup refresh button
         const btnRefresh = document.getElementById('btn-refresh-wifi');
         if (btnRefresh) {
             btnRefresh.addEventListener('click', fetchWiFiNetworks);
         }
-        
+
         // Setup filters
         const filterButtons = document.querySelectorAll('.filter-btn');
         filterButtons.forEach(btn => {
@@ -120,21 +121,21 @@
 
     function updateWiFiStats(data) {
         document.getElementById('total-networks').textContent = data.count || 0;
-        
+
         const secured = data.networks.filter(n => !n.is_open).length;
         const open = data.networks.filter(n => n.is_open).length;
-        
+
         document.getElementById('secured-count').textContent = secured;
         document.getElementById('open-count').textContent = open;
-        
+
         const connected = data.connected;
-        document.getElementById('connected-network').textContent = 
+        document.getElementById('connected-network').textContent =
             (connected && connected.is_connected) ? connected.ssid.replace(/"/g, '') : '-';
     }
 
     function updateWiFiList(networks) {
         const container = document.getElementById('wifi-list');
-        
+
         if (!networks || networks.length === 0) {
             container.innerHTML = '<div class="loading">No WiFi networks detected</div>';
             return;
@@ -195,7 +196,7 @@
         if (networks && networks.length > 0) {
             html += `<h4>⚠️ Detecting Probe Requests (${networks.length} networks)</h4>`;
             html += `<p><small>All visible networks can see your device scanning for WiFi</small></p>`;
-            
+
             networks.slice(0, 5).forEach(network => {
                 const signalQuality = network.signal_quality || 0;
                 html += `
@@ -207,7 +208,7 @@
                     </div>
                 `;
             });
-            
+
             if (networks.length > 5) {
                 html += `<p><small>...and ${networks.length - 5} more networks</small></p>`;
             }
@@ -217,7 +218,7 @@
     }
 
     function showWiFiError(message) {
-        document.getElementById('wifi-list').innerHTML = 
+        document.getElementById('wifi-list').innerHTML =
             `<div class="loading" style="color: #ef4444;">${escapeHtml(message)}</div>`;
     }
 

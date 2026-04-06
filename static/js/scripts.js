@@ -84,12 +84,12 @@ function initializeFullMap() {
 
     // Start periodic updates
     startPeriodicUpdates();
-    
+
     // Lazy load nearby towers when map moves
-    map.on('moveend', function() {
+    map.on('moveend', function () {
         fetchNearbyTowers();
     });
-    
+
     // Initial fetch of nearby towers
     fetchNearbyTowers();
 }
@@ -119,7 +119,7 @@ function initializeMiniMap() {
         subdomains: 'abcd',
         maxZoom: 19
     }).addTo(map);
-    
+
     // Nearby towers will be fetched automatically when location is set
 }
 
@@ -278,7 +278,7 @@ async function fetchTowers() {
         updateTowerList(towers);
         updateTowerMarkers(towers);
         updateStats(towers);
-        
+
         // Use device location from Android app if available
         if (data.device_location && data.device_location.latitude) {
             console.log('📍 Using location from Android app:', data.device_location);
@@ -289,24 +289,24 @@ async function fetchTowers() {
                 altitude: data.device_location.altitude || 0,
                 timestamp: new Date().toISOString()
             };
-            
+
             // Update UI with Android GPS location
             updateLocationCard(currentLocation);
             updateDeviceMarker(currentLocation);
-            
+
             // Update IMEI tracking visualization
             const connectedTower = towers.find(t => t.registered);
             if (connectedTower) {
                 updateDetectionRadius(currentLocation, connectedTower.signal_strength);
                 updateTrackingPanel(towers, currentLocation, calculateDetectionRadius(connectedTower.signal_strength));
             }
-            
+
             // Center map on location (first time only)
             if (map && isFirstLocationFix) {
                 map.setView([currentLocation.latitude, currentLocation.longitude], 15);
                 isFirstLocationFix = false;
                 console.log('📍 Map centered on your location from Android');
-                
+
                 // Load nearby towers now that we have user location
                 fetchNearbyTowers();
             }
@@ -334,7 +334,7 @@ async function fetchNearbyTowers() {
         console.log('⏸️ Map not initialized, skipping nearby tower fetch');
         return;
     }
-    
+
     try {
         // Get map bounds
         const bounds = map.getBounds();
@@ -342,30 +342,30 @@ async function fetchNearbyTowers() {
         const maxLat = bounds.getNorth();
         const minLon = bounds.getWest();
         const maxLon = bounds.getEast();
-        
+
         console.log(`🗺️ Fetching towers in view: ${minLat.toFixed(3)},${minLon.toFixed(3)} to ${maxLat.toFixed(3)},${maxLon.toFixed(3)}`);
-        
+
         // Fetch from API
         const response = await fetch(
             `${CONFIG.apiBaseUrl}/towers/nearby?bbox=${minLat},${minLon},${maxLat},${maxLon}`
         );
-        
+
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
         }
-        
+
         const data = await response.json();
         const towers = data.towers || [];
-        
+
         console.log(`📡 Found ${towers.length} nearby towers from OpenCelliD`);
-        
+
         // Cluster nearby cells into tower sites (cells within 100m = same tower)
         const clusteredTowers = clusterNearbyTowers(towers, 0.1); // 0.1 km = 100m
         console.log(`📍 Clustered ${towers.length} cells into ${clusteredTowers.length} tower sites`);
-        
+
         // Update map with clustered tower sites
         updateNearbyTowerMarkers(clusteredTowers);
-        
+
     } catch (error) {
         console.error('⚠️ Error fetching nearby towers:', error);
         // Fail silently - this is a nice-to-have feature
@@ -384,26 +384,26 @@ async function fetchNearbyTowers() {
  */
 function clusterNearbyTowers(towers, distanceThresholdKm = 0.1) {
     if (!towers || towers.length === 0) return [];
-    
+
     const clusters = [];
     const used = new Set();
-    
+
     // Helper: Calculate distance between two points (Haversine formula)
     function distance(lat1, lon1, lat2, lon2) {
         const R = 6371; // Earth radius in km
         const dLat = (lat2 - lat1) * Math.PI / 180;
         const dLon = (lon2 - lon1) * Math.PI / 180;
-        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                  Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-                  Math.sin(dLon/2) * Math.sin(dLon/2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         return R * c;
     }
-    
+
     // Cluster towers by proximity
     towers.forEach((tower, i) => {
         if (used.has(i)) return;
-        
+
         // Create new cluster with this tower as center
         const cluster = {
             latitude: tower.latitude,
@@ -415,35 +415,35 @@ function clusterNearbyTowers(towers, distanceThresholdKm = 0.1) {
             location_source: tower.location_source,
             tower_type: tower.tower_type
         };
-        
+
         used.add(i);
-        
+
         // Find nearby towers (within threshold)
         towers.forEach((other, j) => {
             if (used.has(j)) return;
-            
+
             const dist = distance(tower.latitude, tower.longitude, other.latitude, other.longitude);
-            
+
             if (dist <= distanceThresholdKm) {
                 cluster.cells.push(other);
                 cluster.carriers.add(other.carrier);
                 cluster.technologies.add(other.network_type);
                 cluster.cell_count++;
                 used.add(j);
-                
+
                 // Update cluster center (average position)
                 cluster.latitude = cluster.cells.reduce((sum, c) => sum + c.latitude, 0) / cluster.cells.length;
                 cluster.longitude = cluster.cells.reduce((sum, c) => sum + c.longitude, 0) / cluster.cells.length;
             }
         });
-        
+
         // Convert Sets to Arrays for display
         cluster.carriers = Array.from(cluster.carriers);
         cluster.technologies = Array.from(cluster.technologies);
-        
+
         clusters.push(cluster);
     });
-    
+
     return clusters;
 }
 
@@ -661,7 +661,7 @@ function calculateDetectionRadius(signalDbm) {
     // Detection range: how far other towers can "hear" the device
     // At -77 dBm (excellent): ~500m detection radius
     // At -105 dBm (weak): ~3000m detection radius
-    
+
     if (signalDbm >= -70) return 300;   // Very close, small detection zone
     if (signalDbm >= -85) return 800;   // Good signal, moderate zone
     if (signalDbm >= -95) return 1500;  // Fair signal, larger zone
@@ -680,14 +680,14 @@ function calculateDetectionRadius(signalDbm) {
  */
 function updateDetectionRadius(location, signalDbm) {
     if (!map) return;
-    
+
     const radius = calculateDetectionRadius(signalDbm);
-    
+
     // Remove old circle
     if (detectionRadiusCircle) {
         map.removeLayer(detectionRadiusCircle);
     }
-    
+
     // Add new detection radius circle
     detectionRadiusCircle = L.circle([location.latitude, location.longitude], {
         radius: radius,
@@ -697,14 +697,14 @@ function updateDetectionRadius(location, signalDbm) {
         weight: 2,
         dashArray: '5, 5'
     }).addTo(map);
-    
+
     detectionRadiusCircle.bindPopup(`
         <strong>🔴 IMEI Detection Zone</strong><br>
         Radius: ${radius}m<br>
         Signal: ${signalDbm} dBm<br>
         Towers in this zone can detect your device
     `);
-    
+
     console.log(`🔴 IMEI detection radius: ${radius}m (signal: ${signalDbm} dBm)`);
 }
 
@@ -834,7 +834,7 @@ function updateNearbyTowerMarkers(towers) {
                 iconSize: [30, 30]
             })
         }).addTo(map);
-        
+
         // Store tower data on marker for later reference
         marker._towerData = tower;
 
@@ -843,7 +843,7 @@ function updateNearbyTowerMarkers(towers) {
         popupContent += `📱 ${cellCount} cell${cellCount > 1 ? 's' : ''}<br>`;
         popupContent += `📡 ${carriers.join(', ')}<br>`;
         popupContent += `🔧 ${technologies.join(', ')}<br>`;
-        
+
         // If cluster, show cell details
         if (tower.cells && tower.cells.length > 1) {
             popupContent += `<br><em style="font-size: 0.9em;">Cells at this site:</em><br>`;
@@ -857,7 +857,7 @@ function updateNearbyTowerMarkers(towers) {
             }
             popupContent += `</div>`;
         }
-        
+
         popupContent += `<br><em style="color: #888;">From OpenCelliD</em>`;
 
         marker.bindPopup(popupContent);
@@ -906,7 +906,7 @@ function calculateDetectionRadius(signalDbm) {
     // Detection range: how far other towers can "hear" the device
     // At -77 dBm (excellent): ~500m detection radius
     // At -105 dBm (weak): ~3000m detection radius
-    
+
     if (signalDbm >= -70) return 300;   // Very close, small detection zone
     if (signalDbm >= -85) return 800;   // Good signal, moderate zone
     if (signalDbm >= -95) return 1500;  // Fair signal, larger zone
@@ -925,14 +925,14 @@ function calculateDetectionRadius(signalDbm) {
  */
 function updateDetectionRadius(location, signalDbm) {
     if (!map) return;
-    
+
     const radius = calculateDetectionRadius(signalDbm);
-    
+
     // Remove old circle
     if (detectionRadiusCircle) {
         map.removeLayer(detectionRadiusCircle);
     }
-    
+
     // Add new detection radius circle
     detectionRadiusCircle = L.circle([location.latitude, location.longitude], {
         radius: radius,
@@ -942,14 +942,14 @@ function updateDetectionRadius(location, signalDbm) {
         weight: 2,
         dashArray: '5, 5'
     }).addTo(map);
-    
+
     detectionRadiusCircle.bindPopup(`
         <strong>🔴 IMEI Detection Zone</strong><br>
         Radius: ${radius}m<br>
         Signal: ${signalDbm} dBm<br>
         Towers in this zone can detect your device
     `);
-    
+
     console.log(`🔴 IMEI detection radius: ${radius}m (signal: ${signalDbm} dBm)`);
 }
 
@@ -966,9 +966,9 @@ function updateDetectionRadius(location, signalDbm) {
 function updateTrackingPanel(towers, location, detectionRadius) {
     const trackingPanel = document.getElementById('tracking-panel');
     if (!trackingPanel) return;
-    
+
     trackingTowers.clear();
-    
+
     // Find nearby towers in detection range
     const towersInRange = nearbyTowerMarkers
         .map(marker => {
@@ -984,12 +984,12 @@ function updateTrackingPanel(towers, location, detectionRadius) {
                     network_type: 'Unknown'
                 };
             }
-            
+
             const distance = calculateDistance(
                 location.latitude, location.longitude,
                 tower.latitude, tower.longitude
             );
-            
+
             if (distance <= detectionRadius) {
                 trackingTowers.add(tower.cell_id || tower.cellid || Math.random());
                 return { ...tower, distance };
@@ -998,7 +998,7 @@ function updateTrackingPanel(towers, location, detectionRadius) {
         })
         .filter(t => t !== null)
         .sort((a, b) => a.distance - b.distance);
-    
+
     // Check nearby markers that have position
     nearbyTowerMarkers.forEach(marker => {
         const lat = marker.getLatLng().lat;
@@ -1007,7 +1007,7 @@ function updateTrackingPanel(towers, location, detectionRadius) {
             location.latitude, location.longitude,
             lat, lng
         );
-        
+
         if (distance <= detectionRadius && !towersInRange.some(t => t.latitude === lat && t.longitude === lng)) {
             towersInRange.push({
                 latitude: lat,
@@ -1018,17 +1018,17 @@ function updateTrackingPanel(towers, location, detectionRadius) {
             });
         }
     });
-    
+
     // Add currently connected tower (always tracking)
     const connectedTower = towers.find(t => t.registered);
-    
+
     let html = `
         <h3>🔴 Services Detecting Your IMEI</h3>
         <div class="tracking-warning">
             ⚠️ These services can currently see your device identifier
         </div>
     `;
-    
+
     // Connected tower (definitely tracking)
     if (connectedTower) {
         html += `
@@ -1041,7 +1041,7 @@ function updateTrackingPanel(towers, location, detectionRadius) {
             </div>
         `;
     }
-    
+
     // Nearby towers in detection range
     if (towersInRange.length > 0) {
         html += `<h4>⚠️ Nearby Towers (${towersInRange.length} in range)</h4>`;
@@ -1062,9 +1062,9 @@ function updateTrackingPanel(towers, location, detectionRadius) {
     } else {
         html += `<p><small>No nearby towers in detection range</small></p>`;
     }
-    
+
     trackingPanel.innerHTML = html;
-    
+
     console.log(`🔴 Tracking update: ${trackingTowers.size} towers can detect device`);
 }
 
