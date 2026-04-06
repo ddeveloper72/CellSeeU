@@ -56,8 +56,12 @@ public class WiFi3DActivity extends AppCompatActivity {
     // Label controls
     private ToggleButton labelToggle;
     private Spinner labelModeSpinner;
+    private ToggleButton band24Toggle;
+    private ToggleButton band5Toggle;
     private FrameLayout labelOverlay;
     private boolean showLabels = true;
+    private boolean show24GHz = true;
+    private boolean show5GHz = true;
     private WiFiNetwork3D.LabelMode labelMode = WiFiNetwork3D.LabelMode.NAME;
     private List<WiFiNetwork3D> currentNetworks = new ArrayList<>();
     
@@ -195,7 +199,7 @@ public class WiFi3DActivity extends AppCompatActivity {
         // First row: Label controls
         LinearLayout labelRow = new LinearLayout(this);
         labelRow.setOrientation(LinearLayout.HORIZONTAL);
-        labelRow.setPadding(5, 5, 5, 10);
+        labelRow.setPadding(5, 5, 5, 5);
         
         // Label toggle
         labelToggle = new ToggleButton(this);
@@ -251,10 +255,54 @@ public class WiFi3DActivity extends AppCompatActivity {
         
         panel.addView(labelRow);
         
-        // Second row: Action buttons
+        // Second row: Band filter controls
+        LinearLayout bandRow = new LinearLayout(this);
+        bandRow.setOrientation(LinearLayout.HORIZONTAL);
+        bandRow.setPadding(5, 5, 5, 5);
+        
+        // 2.4GHz toggle
+        band24Toggle = new ToggleButton(this);
+        band24Toggle.setTextOn("2.4GHz ON");
+        band24Toggle.setTextOff("2.4GHz OFF");
+        band24Toggle.setChecked(show24GHz);
+        band24Toggle.setTextColor(0xFFFFFFFF);
+        band24Toggle.setBackgroundColor(0xFF66BB6A);
+        band24Toggle.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            show24GHz = isChecked;
+            filterAndUpdateNetworks();
+        });
+        
+        LinearLayout.LayoutParams bandToggleParams = new LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                0.5f
+        );
+        bandToggleParams.setMargins(0, 0, 5, 0);
+        band24Toggle.setLayoutParams(bandToggleParams);
+        bandRow.addView(band24Toggle);
+        
+        // 5GHz toggle
+        band5Toggle = new ToggleButton(this);
+        band5Toggle.setTextOn("5GHz ON");
+        band5Toggle.setTextOff("5GHz OFF");
+        band5Toggle.setChecked(show5GHz);
+        band5Toggle.setTextColor(0xFFFFFFFF);
+        band5Toggle.setBackgroundColor(0xFFEF5350);
+        band5Toggle.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            show5GHz = isChecked;
+            filterAndUpdateNetworks();
+        });
+        
+        bandToggleParams.setMargins(5, 0, 0, 0);
+        band5Toggle.setLayoutParams(bandToggleParams);
+        bandRow.addView(band5Toggle);
+        
+        panel.addView(bandRow);
+        
+        // Third row: Action buttons
         LinearLayout buttonRow = new LinearLayout(this);
         buttonRow.setOrientation(LinearLayout.HORIZONTAL);
-        buttonRow.setPadding(5, 0, 5, 5);
+        buttonRow.setPadding(5, 5, 5, 5);
         
         // Refresh button
         refreshButton = new Button(this);
@@ -391,19 +439,17 @@ public class WiFi3DActivity extends AppCompatActivity {
                 // Update renderer with new network data
                 renderer.updateWiFiNetworks(network3DList);
                 
-                // Store networks for label updates
+                // Store networks for label updates and filtering
                 synchronized (currentNetworks) {
                     currentNetworks = new ArrayList<>(network3DList);
                 }
                 
-                int count = networks.length();
+                // Apply band filtering
+                int totalCount = network3DList.size();
                 runOnUiThread(() -> {
-                    networkCountText.setText("Networks: " + count);
-                    statusText.setText("Last scan: " + count + " networks detected");
-                    updateNetworkLabels();
+                    filterAndUpdateNetworks();
+                    statusText.setText(String.format("Last scan: %d networks detected", totalCount));
                 });
-                
-                Log.i(TAG, "📶 Updated 3D view with " + count + " networks");
                 
             } catch (Exception e) {
                 Log.e(TAG, "Error scanning WiFi", e);
@@ -439,6 +485,42 @@ public class WiFi3DActivity extends AppCompatActivity {
     }
     
     /**
+     * Filter networks by band and update display
+     */
+    private void filterAndUpdateNetworks() {
+        List<WiFiNetwork3D> filteredNetworks = new ArrayList<>();
+        
+        synchronized (currentNetworks) {
+            for (WiFiNetwork3D network : currentNetworks) {
+                boolean include = false;
+                
+                if (network.band.equals("2.4GHz") && show24GHz) {
+                    include = true;
+                } else if (network.band.equals("5GHz") && show5GHz) {
+                    include = true;
+                }
+                
+                if (include) {
+                    filteredNetworks.add(network);
+                }
+            }
+        }
+        
+        // Update renderer with filtered networks
+        renderer.updateWiFiNetworks(filteredNetworks);
+        
+        // Update labels
+        updateNetworkLabels();
+        
+        // Update network count
+        int total = currentNetworks.size();
+        int shown = filteredNetworks.size();
+        runOnUiThread(() -> {
+            networkCountText.setText(String.format("Networks: %d/%d", shown, total));
+        });
+    }
+    
+    /**
      * Update network labels overlay
      * Projects 3D positions to 2D screen coordinates using renderer's camera matrices
      */
@@ -456,8 +538,24 @@ public class WiFi3DActivity extends AppCompatActivity {
             // Get screen positions from renderer (uses actual 3D projection)
             List<WiFi3DRenderer.NetworkScreenPosition> positions = renderer.getNetworkScreenPositions();
             
-            // Add labels with connector lines at projected screen positions
+            // Filter positions by band
+            List<WiFi3DRenderer.NetworkScreenPosition> filteredPositions = new ArrayList<>();
             for (WiFi3DRenderer.NetworkScreenPosition pos : positions) {
+                boolean include = false;
+                
+                if (pos.network.band.equals("2.4GHz") && show24GHz) {
+                    include = true;
+                } else if (pos.network.band.equals("5GHz") && show5GHz) {
+                    include = true;
+                }
+                
+                if (include) {
+                    filteredPositions.add(pos);
+                }
+            }
+            
+            // Add labels with connector lines at projected screen positions
+            for (WiFi3DRenderer.NetworkScreenPosition pos : filteredPositions) {
                 // Create label with connector line
                 addLabelWithConnector(pos);
             }
@@ -468,9 +566,9 @@ public class WiFi3DActivity extends AppCompatActivity {
      * Add a label with a visual connector line to its WiFi source
      */
     private void addLabelWithConnector(WiFi3DRenderer.NetworkScreenPosition pos) {
-        // Label position (offset above and to the side of the sphere)
-        int labelOffsetX = 30;  // Offset to the right
-        int labelOffsetY = -40; // Offset above the sphere
+        // Label position (much closer to the sphere)
+        int labelOffsetX = 15;  // Closer horizontally
+        int labelOffsetY = -25; // Closer vertically
         
         int labelX = (int)pos.screenX + labelOffsetX;
         int labelY = (int)pos.screenY + labelOffsetY;
