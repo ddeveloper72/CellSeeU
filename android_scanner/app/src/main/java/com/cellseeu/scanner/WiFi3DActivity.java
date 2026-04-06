@@ -566,9 +566,9 @@ public class WiFi3DActivity extends AppCompatActivity {
      * Add a label with a 2D connector line to its WiFi source
      */
     private void addLabelWithConnector(WiFi3DRenderer.NetworkScreenPosition pos) {
-        // Label position - close to sphere
-        int labelOffsetX = 40;   // Offset to the right
-        int labelOffsetY = -35;  // Offset upward (negative = up)
+        // Label position - very close to sphere (~5-8 pixels)
+        int labelOffsetX = 8;   // Offset to the right
+        int labelOffsetY = -8;  // Offset upward (negative = up)
         
         int labelX = (int)pos.screenX + labelOffsetX;
         int labelY = (int)pos.screenY + labelOffsetY;
