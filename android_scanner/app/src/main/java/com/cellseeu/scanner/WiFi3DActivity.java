@@ -581,8 +581,8 @@ public class WiFi3DActivity extends AppCompatActivity {
                 
                 // Draw line from sphere (0,0 of this view) to label
                 android.graphics.Paint paint = new android.graphics.Paint();
-                paint.setColor(0x88FFFFFF);  // Semi-transparent white
-                paint.setStrokeWidth(2);
+                paint.setColor(0xFFD8D8D8);  // Bright silver for visibility on dark background
+                paint.setStrokeWidth(3);  // Thicker for better visibility
                 paint.setAntiAlias(true);
                 
                 // Draw line from sphere center to label start
@@ -590,8 +590,8 @@ public class WiFi3DActivity extends AppCompatActivity {
                 
                 // Draw small circle at sphere end (anchor point)
                 paint.setStyle(android.graphics.Paint.Style.FILL);
-                paint.setColor(0xFFFFFFFF);
-                canvas.drawCircle(0, 0, 4, paint);
+                paint.setColor(0xFFE0E0E0);  // Light silver anchor point
+                canvas.drawCircle(0, 0, 5, paint);  // Slightly larger anchor
             }
         };
         
