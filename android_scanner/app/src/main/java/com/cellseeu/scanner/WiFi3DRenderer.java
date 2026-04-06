@@ -171,11 +171,18 @@ public class WiFi3DRenderer implements GLSurfaceView.Renderer {
         drawObject(networkSphere.getVertexBuffer(), networkSphere.getVertexCount(),
                   networkColor, GLES20.GL_TRIANGLE_FAN);
         
-        // Draw label connector line (leader line pointing upward from sphere)
-        float leaderHeight = 0.8f;  // How high the line extends
+        // Draw label connector line (angled to point toward label position)
+        // Labels are offset (+15, -25) in screen space = upper-right
+        // Create 3D line that angles toward where label appears
+        float leaderHeight = 0.8f;
+        float leaderOffsetRight = 0.25f;  // Offset right to match label position
+        float leaderOffsetForward = 0.15f; // Offset toward camera
+        
         float[] leaderVertices = {
                 pos[0], pos[1], pos[2],    // Start at sphere position
-                pos[0], pos[1] + leaderHeight, pos[2]  // End above sphere
+                pos[0] + leaderOffsetRight,  // End: offset to the right
+                pos[1] + leaderHeight,       // End: upward
+                pos[2] + leaderOffsetForward // End: slightly toward camera
         };
         
         FloatBuffer leaderBuffer = ByteBuffer.allocateDirect(leaderVertices.length * 4)
