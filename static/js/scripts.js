@@ -23,6 +23,7 @@ let map = null;
 let deviceMarker = null;
 let towerMarkers = [];
 let nearbyTowerMarkers = []; // For lazy-loaded towers from OpenCelliD
+let wifiApMarkers = []; // For triangulated WiFi access points
 let detectionRadiusCircle = null; // Visual radius showing IMEI detection zone
 let trackingTowers = new Set(); // Towers currently in detection range
 let currentLocation = null;
@@ -78,6 +79,9 @@ function initializeFullMap() {
     // Request location and fetch towers
     requestLocation();
     fetchTowers();
+    
+    // Fetch WiFi AP positions (if available)
+    fetchWiFiAccessPoints();
 
     // Setup event listeners
     setupMapControls();
@@ -90,8 +94,11 @@ function initializeFullMap() {
         fetchNearbyTowers();
     });
 
-    // Initial fetch of nearby towers
+    // Initial fetch of nearby towers  
     fetchNearbyTowers();
+    
+    // Refresh WiFi APs every 30 seconds
+    setInterval(fetchWiFiAccessPoints, 30000);
 }
 
 /**
@@ -369,6 +376,39 @@ async function fetchNearbyTowers() {
     } catch (error) {
         console.error('⚠️ Error fetching nearby towers:', error);
         // Fail silently - this is a nice-to-have feature
+    }
+}
+
+/**
+ * Fetch triangulated WiFi Access Point positions
+ * 
+ * Gets estimated WiFi AP locations from backend triangulation service.
+ * Requires multiple scans from different positions with orientation data.
+ */
+async function fetchWiFiAccessPoints() {
+    try {
+        const response = await fetch(`${CONFIG.apiBaseUrl}/wifi/positions?min_confidence=0.3&min_scans=2`);
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        const accessPoints = data.access_points || {};
+        const count = Object.keys(accessPoints).length;
+
+        console.log(`📶 Found ${count} WiFi APs with estimated positions (${data.scan_history_size} scans analyzed)`);
+
+        // Update map with WiFi AP markers
+        if (map) {
+            updateWiFiApMarkers(accessPoints);
+        }
+
+        return accessPoints;
+
+    } catch (error) {
+        console.error('⚠️ Error fetching WiFi AP positions:', error);
+        return {};
     }
 }
 
@@ -865,6 +905,71 @@ function updateNearbyTowerMarkers(towers) {
     });
 
     console.log(`🗺️ Added ${nearbyTowerMarkers.length} nearby tower markers`);
+}
+
+/**
+ * Update WiFi Access Point markers on map
+ * 
+ * Displays triangulated WiFi AP locations with confidence indicators.
+ * @param {Object} accessPoints - WiFi APs from /api/wifi/positions
+ */
+function updateWiFiApMarkers(accessPoints) {
+    if (!map) return;
+
+    // Remove existing WiFi AP markers
+    wifiApMarkers.forEach(marker => map.removeLayer(marker));
+    wifiApMarkers = [];
+
+    // Add marker for each WiFi AP
+    Object.entries(accessPoints).forEach(([bssid, ap]) => {
+        if (!ap.latitude || !ap.longitude) return;
+
+        const confidence = ap.confidence || 0;
+        const scanCount = ap.scan_count || 0;
+        const accuracy = ap.accuracy_m || 0;
+
+        // Color based on confidence (green = high, yellow = medium, orange = low)
+        let color = '#f97316'; // orange (low confidence)
+        if (confidence >= 0.7) color = '#10b981'; // green (high)
+        else if (confidence >= 0.4) color = '#eab308'; // yellow (medium)
+
+        // Create marker with confidence indicator
+        const marker = L.marker([ap.latitude, ap.longitude], {
+            icon: L.divIcon({
+                className: 'wifi-ap-marker',
+                html: `<div style="background-color: ${color}; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-center; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">📶</div>`,
+                iconSize: [24, 24]
+            })
+        }).addTo(map);
+
+        // Add accuracy circle around AP
+        const accuracyCircle = L.circle([ap.latitude, ap.longitude], {
+            radius: accuracy,
+            color: color,
+            fillColor: color,
+            fillOpacity: 0.1,
+            weight: 1,
+            dashArray: '5, 5'
+        }).addTo(map);
+
+        // Build popup content
+        let popupContent = `<strong>📶 WiFi Access Point</strong><br>`;
+        popupContent += `<strong style="font-size: 1.1em;">${escapeHtml(ap.ssid)}</strong><br>`;
+        popupContent += `🔒 ${ap.security || 'Unknown'}<br>`;
+        popupContent += `📍 Position: ${ap.latitude.toFixed(6)}, ${ap.longitude.toFixed(6)}<br>`;
+        popupContent += `✨ Confidence: ${(confidence * 100).toFixed(0)}%<br>`;
+        popupContent += `📊 Scans: ${scanCount}<br>`;
+        popupContent += `🎯 Accuracy: ±${accuracy}m<br>`;
+        popupContent += `<br><em style="color: #888; font-size: 0.85em;">Estimated from ${scanCount} scans with device orientation</em>`;
+
+        marker.bindPopup(popupContent);
+        
+        // Store marker and circle
+        wifiApMarkers.push(marker);
+        wifiApMarkers.push(accuracyCircle);
+    });
+
+    console.log(`📶 Added ${Object.keys(accessPoints).length} WiFi AP markers`);
 }
 
 /**

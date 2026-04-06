@@ -42,6 +42,18 @@
         </div>
     </section>
 
+    <!-- Estimated WiFi AP Positions (from triangulation) -->
+    <section class="section">
+        <h2>📍 Estimated Access Point Locations</h2>
+        <p class="subtitle">Walk around while scanning to triangulate WiFi router positions using orientation sensors</p>
+        <div id="wifi-positions-info" class="info-box" style="margin-bottom: 1rem;">
+            <em>📊 Analyzing scan history...</em>
+        </div>
+        <div id="wifi-positions-list" class="tower-grid">
+            <div class="loading">No position data yet - walk around and scan from different locations</div>
+        </div>
+    </section>
+
     <!-- WiFi list -->
     <section class="section">
         <h2>📶 Detected Networks</h2>
@@ -81,11 +93,15 @@
         console.log('📶 Initializing WiFi page');
 
         fetchWiFiNetworks();
+        fetchWiFiPositions();  // Fetch triangulated positions
 
         // Setup refresh button
         const btnRefresh = document.getElementById('btn-refresh-wifi');
         if (btnRefresh) {
-            btnRefresh.addEventListener('click', fetchWiFiNetworks);
+            btnRefresh.addEventListener('click', () => {
+                fetchWiFiNetworks();
+                fetchWiFiPositions();
+            });
         }
 
         // Setup filters
@@ -97,6 +113,9 @@
                 // TODO: Filter implementation
             });
         });
+        
+        // Auto-refresh positions every 15 seconds
+        setInterval(fetchWiFiPositions, 15000);
     }
 
     async function fetchWiFiNetworks() {
@@ -220,6 +239,90 @@
     function showWiFiError(message) {
         document.getElementById('wifi-list').innerHTML =
             `<div class="loading" style="color: #ef4444;">${escapeHtml(message)}</div>`;
+    }
+
+    async function fetchWiFiPositions() {
+        try {
+            const response = await fetch('/api/wifi/positions?min_confidence=0.3&min_scans=2');
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            const data = await response.json();
+            const accessPoints = data.access_points || {};
+            const count = Object.keys(accessPoints).length;
+
+            console.log(`📍 Found ${count} WiFi APs with estimated positions (${data.scan_history_size} scans)`);
+
+            updateWiFiPositionsInfo(data);
+            updateWiFiPositionsList(accessPoints);
+
+        } catch (error) {
+            console.error('⚠️ Error fetching WiFi positions:', error);
+            document.getElementById('wifi-positions-list').innerHTML = 
+                '<div class="loading">Unable to fetch position data</div>';
+        }
+    }
+
+    function updateWiFiPositionsInfo(data) {
+        const infoBox = document.getElementById('wifi-positions-info');
+        if (!infoBox) return;
+
+        const count = Object.keys(data.access_points || {}).length;
+        const scanCount = data.scan_history_size || 0;
+        const totalAPs = data.total_aps_detected || 0;
+
+        let html = '';
+        if (scanCount === 0) {
+            html = '📊 No scan history yet. Walk around while using the Android app to collect orientation data.';
+        } else if (count === 0) {
+            html = `📊 Analyzing ${scanCount} scans... Need more scans from different locations to triangulate positions.`;
+        } else {
+            html = `📊 Successfully triangulated ${count} of ${totalAPs} access points from ${scanCount} scans!`;
+        }
+
+        infoBox.innerHTML = `<em>${html}</em>`;
+    }
+
+    function updateWiFiPositionsList(accessPoints) {
+        const container = document.getElementById('wifi-positions-list');
+        if (!container) return;
+
+        const entries = Object.entries(accessPoints);
+
+        if (entries.length === 0) {
+            container.innerHTML = '<div class="loading">No position data yet - walk around and scan from different locations</div>';
+            return;
+        }
+
+        // Sort by confidence (highest first)
+        entries.sort((a, b) => (b[1].confidence || 0) - (a[1].confidence || 0));
+
+        let html = '';
+        entries.forEach(([bssid, ap]) => {
+            const confidence = (ap.confidence * 100).toFixed(0);
+            const accuracy = ap.accuracy_m;
+
+            // Color by confidence
+            let confidenceColor = '#f97316'; // orange
+            if (ap.confidence >= 0.7) confidenceColor = '#10b981'; // green
+            else if (ap.confidence >= 0.4) confidenceColor = '#eab308'; // yellow
+
+            html += `
+                <div class="tower-card" style="border-left: 4px solid ${confidenceColor};">
+                    <h3>📍 ${escapeHtml(ap.ssid)}</h3>
+                    <p><strong>Position:</strong> ${ap.latitude.toFixed(6)}, ${ap.longitude.toFixed(6)}</p>
+                    <p><strong>Confidence:</strong> <span style="color: ${confidenceColor}; font-weight: bold;">${confidence}%</span></p>
+                    <p><strong>Accuracy:</strong> ±${accuracy}m</p>
+                    <p><strong>Scans used:</strong> ${ap.scan_count}</p>
+                    <p><strong>Security:</strong> ${ap.security}</p>
+                    <p><strong>BSSID:</strong> <code style="font-size: 0.85em;">${bssid}</code></p>
+                    <p style="margin-top: 0.5rem;"><small><em>💡 View on map for visual location</em></small></p>
+                </div>
+            `;
+        });
+
+        container.innerHTML = html;
     }
 
     function escapeHtml(text) {
