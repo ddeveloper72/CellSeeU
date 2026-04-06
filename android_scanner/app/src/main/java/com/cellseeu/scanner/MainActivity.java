@@ -2,6 +2,7 @@ package com.cellseeu.scanner;
 
 import android.Manifest;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.location.Location;
 import android.location.LocationListener;
@@ -79,8 +80,27 @@ public class MainActivity extends AppCompatActivity {
         scanButton.setText("Start Scanning");
         scanButton.setTextSize(20);
         
+        // WiFi 3D View button
+        Button wifi3dButton = new Button(this);
+        wifi3dButton.setText("📡 WiFi 3D View");
+        wifi3dButton.setTextSize(18);
+        wifi3dButton.setBackgroundColor(0xFF4fc3f7);
+        wifi3dButton.setTextColor(0xFFFFFFFF);
+        wifi3dButton.setPadding(20, 20, 20, 20);
+        android.widget.LinearLayout.LayoutParams btnParams = new android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        btnParams.setMargins(0, 20, 0, 0);
+        wifi3dButton.setLayoutParams(btnParams);
+        wifi3dButton.setOnClickListener(v -> {
+            Intent intent = new Intent(MainActivity.this, WiFi3DActivity.class);
+            startActivity(intent);
+        });
+        
         layout.addView(statusText);
         layout.addView(scanButton);
+        layout.addView(wifi3dButton);
         
         return layout;
     }

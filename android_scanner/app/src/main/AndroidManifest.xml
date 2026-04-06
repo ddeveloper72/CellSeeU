@@ -40,6 +40,18 @@
             </intent-filter>
         </activity>
 
+        <!-- WiFi 3D Visualization Activity -->
+        <activity
+            android:name=".WiFi3DActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:label="WiFi 3D View"
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar">
+        </activity>
+
     </application>
+    
+    <!-- OpenGL ES 2.0 requirement -->
+    <uses-feature android:glEsVersion="0x00020000" android:required="true" />
 
 </manifest>
