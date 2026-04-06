@@ -573,6 +573,14 @@ public class WiFi3DActivity extends AppCompatActivity {
         int labelX = (int)pos.screenX + labelOffsetX;
         int labelY = (int)pos.screenY + labelOffsetY;
         
+        // Calculate sphere position within connector view (account for negative offsets)
+        // If label is ABOVE sphere (negative Y offset), sphere is below view's top
+        // If label is LEFT of sphere (negative X offset), sphere is right of view's left
+        final int sphereInViewX = Math.max(0, -labelOffsetX);
+        final int sphereInViewY = Math.max(0, -labelOffsetY);
+        final int labelInViewX = sphereInViewX + labelOffsetX;
+        final int labelInViewY = sphereInViewY + labelOffsetY;
+        
         // Create a 2D connector line in screen space (CORRECT APPROACH!)
         // This View draws from sphere screen position to label position
         View connector = new View(this) {
@@ -583,34 +591,34 @@ public class WiFi3DActivity extends AppCompatActivity {
                 android.graphics.Paint paint = new android.graphics.Paint();
                 paint.setAntiAlias(true);
                 
-                // Draw line from sphere (0,0 in this view) to label
+                // Draw line from sphere to label (both in view coordinates)
                 paint.setColor(0xFFFFFFFF);  // White line
                 paint.setStrokeWidth(2);
-                canvas.drawLine(0, 0, labelOffsetX, labelOffsetY, paint);
+                canvas.drawLine(sphereInViewX, sphereInViewY, labelInViewX, labelInViewY, paint);
                 
                 // Draw anchor circle at sphere
                 paint.setStyle(android.graphics.Paint.Style.FILL);
                 paint.setColor(0xFFFFFF00);  // Yellow anchor
-                canvas.drawCircle(0, 0, 6, paint);
+                canvas.drawCircle(sphereInViewX, sphereInViewY, 6, paint);
                 
                 // White outline
                 paint.setStyle(android.graphics.Paint.Style.STROKE);
                 paint.setColor(0xFFFFFFFF);
                 paint.setStrokeWidth(1);
-                canvas.drawCircle(0, 0, 6, paint);
+                canvas.drawCircle(sphereInViewX, sphereInViewY, 6, paint);
             }
         };
         
         // Enable drawing
         connector.setWillNotDraw(false);
         
-        // Position connector at sphere, make it big enough to reach label
+        // Position connector view at topmost/leftmost point of bounding box
         FrameLayout.LayoutParams connectorParams = new FrameLayout.LayoutParams(
                 Math.abs(labelOffsetX) + 20,
                 Math.abs(labelOffsetY) + 20
         );
-        connectorParams.leftMargin = (int)pos.screenX;
-        connectorParams.topMargin = (int)pos.screenY + labelOffsetY;  // Top of line
+        connectorParams.leftMargin = (int)pos.screenX + Math.min(0, labelOffsetX);  // Account for negative X
+        connectorParams.topMargin = (int)pos.screenY + Math.min(0, labelOffsetY);   // Account for negative Y
         connector.setLayoutParams(connectorParams);
         labelOverlay.addView(connector);
         
