@@ -581,24 +581,35 @@ public class WiFi3DActivity extends AppCompatActivity {
                 
                 // Draw line from sphere (0,0 of this view) to label
                 android.graphics.Paint paint = new android.graphics.Paint();
-                paint.setColor(0xFFD8D8D8);  // Bright silver for visibility on dark background
-                paint.setStrokeWidth(3);  // Thicker for better visibility
+                
+                // Make it VERY visible - bright cyan/white
+                paint.setColor(0xFFFFFFFF);  // Pure white for maximum visibility
+                paint.setStrokeWidth(4);  // Thick line
                 paint.setAntiAlias(true);
                 
                 // Draw line from sphere center to label start
                 canvas.drawLine(0, 0, labelOffsetX, labelOffsetY, paint);
                 
-                // Draw small circle at sphere end (anchor point)
+                // Draw larger anchor circle at sphere end
                 paint.setStyle(android.graphics.Paint.Style.FILL);
-                paint.setColor(0xFFE0E0E0);  // Light silver anchor point
-                canvas.drawCircle(0, 0, 5, paint);  // Slightly larger anchor
+                paint.setColor(0xFFFFFF00);  // Bright yellow anchor - very visible!
+                canvas.drawCircle(0, 0, 8, paint);  // Larger anchor point
+                
+                // Add outline to anchor for extra visibility
+                paint.setStyle(android.graphics.Paint.Style.STROKE);
+                paint.setColor(0xFFFFFFFF);
+                paint.setStrokeWidth(2);
+                canvas.drawCircle(0, 0, 8, paint);
             }
         };
         
-        // Position connector at sphere location
+        // CRITICAL: Enable drawing for this View
+        connector.setWillNotDraw(false);
+        
+        // Position connector at sphere location with proper size
         FrameLayout.LayoutParams connectorParams = new FrameLayout.LayoutParams(
-                Math.abs(labelOffsetX) + 100,  // Wide enough for line
-                Math.abs(labelOffsetY) + 100   // Tall enough for line
+                Math.abs(labelOffsetX) + 50,  // Wide enough for line
+                Math.abs(labelOffsetY) + 50   // Tall enough for line
         );
         connectorParams.leftMargin = (int)pos.screenX;
         connectorParams.topMargin = (int)pos.screenY;
