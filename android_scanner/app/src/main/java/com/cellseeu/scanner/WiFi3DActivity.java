@@ -456,31 +456,87 @@ public class WiFi3DActivity extends AppCompatActivity {
             // Get screen positions from renderer (uses actual 3D projection)
             List<WiFi3DRenderer.NetworkScreenPosition> positions = renderer.getNetworkScreenPositions();
             
-            // Add labels at projected screen positions
+            // Add labels with connector lines at projected screen positions
             for (WiFi3DRenderer.NetworkScreenPosition pos : positions) {
-                TextView label = new TextView(this);
-                label.setText(pos.network.getShortLabel(labelMode));
-                label.setTextColor(0xFFFFFFFF);
-                label.setTextSize(11);
-                label.setBackgroundColor(0xCC000000);
-                label.setPadding(8, 4, 8, 4);
-                label.setShadowLayer(3, 0, 0, 0xFF000000);
-                
-                // Position label at projected screen coordinates
-                FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
-                        FrameLayout.LayoutParams.WRAP_CONTENT,
-                        FrameLayout.LayoutParams.WRAP_CONTENT
-                );
-                
-                // Center label on the sphere position
-                // (We'll adjust after measuring the label, but this is close enough)
-                params.leftMargin = (int)pos.screenX - 50;  // Approximate center offset
-                params.topMargin = (int)pos.screenY - 20;   // Position above sphere
-                
-                label.setLayoutParams(params);
-                labelOverlay.addView(label);
+                // Create label with connector line
+                addLabelWithConnector(pos);
             }
         });
+    }
+    
+    /**
+     * Add a label with a visual connector line to its WiFi source
+     */
+    private void addLabelWithConnector(WiFi3DRenderer.NetworkScreenPosition pos) {
+        // Label position (offset above and to the side of the sphere)
+        int labelOffsetX = 30;  // Offset to the right
+        int labelOffsetY = -40; // Offset above the sphere
+        
+        int labelX = (int)pos.screenX + labelOffsetX;
+        int labelY = (int)pos.screenY + labelOffsetY;
+        
+        // Create connector line from sphere to label
+        View connector = new View(this) {
+            @Override
+            protected void onDraw(android.graphics.Canvas canvas) {
+                super.onDraw(canvas);
+                
+                // Draw line from sphere (0,0 of this view) to label
+                android.graphics.Paint paint = new android.graphics.Paint();
+                paint.setColor(0x88FFFFFF);  // Semi-transparent white
+                paint.setStrokeWidth(2);
+                paint.setAntiAlias(true);
+                
+                // Draw line from sphere center to label start
+                canvas.drawLine(0, 0, labelOffsetX, labelOffsetY, paint);
+                
+                // Draw small circle at sphere end (anchor point)
+                paint.setStyle(android.graphics.Paint.Style.FILL);
+                paint.setColor(0xFFFFFFFF);
+                canvas.drawCircle(0, 0, 4, paint);
+            }
+        };
+        
+        // Position connector at sphere location
+        FrameLayout.LayoutParams connectorParams = new FrameLayout.LayoutParams(
+                Math.abs(labelOffsetX) + 100,  // Wide enough for line
+                Math.abs(labelOffsetY) + 100   // Tall enough for line
+        );
+        connectorParams.leftMargin = (int)pos.screenX;
+        connectorParams.topMargin = (int)pos.screenY;
+        connector.setLayoutParams(connectorParams);
+        labelOverlay.addView(connector);
+        
+        // Create label
+        TextView label = new TextView(this);
+        label.setText(pos.network.getShortLabel(labelMode));
+        label.setTextColor(0xFFFFFFFF);
+        label.setTextSize(11);
+        label.setBackgroundColor(0xDD000000);  // Slightly more opaque
+        label.setPadding(8, 4, 8, 4);
+        label.setShadowLayer(3, 0, 0, 0xFF000000);
+        
+        // Add colored border matching signal strength
+        android.graphics.drawable.GradientDrawable border = new android.graphics.drawable.GradientDrawable();
+        border.setColor(0xDD000000);  // Background
+        border.setStroke(2, android.graphics.Color.rgb(
+                (int)(pos.network.color[0] * 255),
+                (int)(pos.network.color[1] * 255),
+                (int)(pos.network.color[2] * 255)
+        ));  // Border color matches WiFi sphere
+        border.setCornerRadius(4);
+        label.setBackground(border);
+        
+        // Position label offset from sphere
+        FrameLayout.LayoutParams labelParams = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+        );
+        labelParams.leftMargin = labelX;
+        labelParams.topMargin = labelY;
+        
+        label.setLayoutParams(labelParams);
+        labelOverlay.addView(label);
     }
     
     @Override
