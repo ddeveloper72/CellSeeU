@@ -292,18 +292,6 @@ public class ServerConfig {
 
 ---
 
-## Git Commits (Recent)
-
-```bash
-c57a781 - feat: Add WiFi directional positioning and triangulation
-ddff203 - chore: Format scripts.js and wifi.html
-c3306de - feat: Add WiFi network detection and tracking visualization
-a08755f - feat: Add IMEI tracking visualization
-6641d89 - fix: Remove JavaScript syntax errors in scripts.js
-33fde42 - feat: Add lazy loading of nearby cell towers with clustering
-```
-
----
 
 ## Next Steps (Future Enhancements)
 
