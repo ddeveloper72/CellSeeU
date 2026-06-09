@@ -6,7 +6,7 @@ Track what services can see your device in real-time using IMEI detection, WiFi 
 
 ---
 
-## 🎯 What Does This Do?
+## What Does This Do?
 
 **CellSeeU** shows you which services are tracking your phone by detecting:
 - **Cell towers** that can see your IMEI number
@@ -21,7 +21,7 @@ Track what services can see your device in real-time using IMEI detection, WiFi 
 
 ---
 
-## 📱 System Architecture
+## System Architecture
 
 ```
 Android App (Scanner)        Backend (Flask)         Frontend (Dashboard)
@@ -33,7 +33,7 @@ Android App (Scanner)        Backend (Flask)         Frontend (Dashboard)
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### 1. Start Backend Server
 
@@ -83,7 +83,7 @@ Tabs:
 
 ---
 
-## 🧭 WiFi Triangulation (How It Works)
+## WiFi Triangulation (How It Works)
 
 ### The Physics:
 WiFi signals are like flashlight beams - if you know:
@@ -123,9 +123,9 @@ Factors affecting accuracy:
 
 ---
 
-## 📊 Current Features
+## Current Features
 
-### ✅ Implemented:
+### Implemented:
 
 **Android App:**
 - ✅ Cell tower scanning (IMEI, signal, carrier)
@@ -157,7 +157,7 @@ Factors affecting accuracy:
 
 ---
 
-## 📡 API Endpoints
+## API Endpoints
 
 ### GET /api/towers
 Returns detected cell towers from Android app.
@@ -230,7 +230,7 @@ Returns triangulated WiFi AP positions.
 
 ---
 
-## 🗂️ File Structure
+## File Structure
 
 ```
 cell_see_u/
@@ -270,7 +270,7 @@ cell_see_u/
 
 ---
 
-## 🔧 Configuration
+## Configuration
 
 ### Backend (.env)
 ```bash
@@ -292,7 +292,7 @@ public class ServerConfig {
 
 ---
 
-## 📝 Git Commits (Recent)
+## Git Commits (Recent)
 
 ```bash
 c57a781 - feat: Add WiFi directional positioning and triangulation
@@ -305,7 +305,7 @@ a08755f - feat: Add IMEI tracking visualization
 
 ---
 
-## 🎯 Next Steps (Future Enhancements)
+## Next Steps (Future Enhancements)
 
 ### Priority 1: Complete WiFi Visualization
 - [x] Add WiFi AP markers to map - **DONE**
@@ -336,7 +336,7 @@ a08755f - feat: Add IMEI tracking visualization
 
 ---
 
-## 🐛 Known Issues
+## Known Issues
 
 1. **Android 9+ WiFi Throttling**: `startScan()` throttled to 4 scans per 2 minutes
    - Workaround: Use cached scan results
@@ -355,7 +355,7 @@ a08755f - feat: Add IMEI tracking visualization
 
 ---
 
-## 🔐 Privacy & Security
+## Privacy & Security
 
 ### Data Handling:
 - **NO cloud storage** - All data stored in memory
@@ -373,7 +373,7 @@ a08755f - feat: Add IMEI tracking visualization
 
 ---
 
-## 🛠️ Troubleshooting
+## Troubleshooting
 
 ### Server won't start:
 ```powershell
@@ -406,7 +406,7 @@ python app.py
 
 ---
 
-## 📚 Technical References
+## Technical References
 
 ### WiFi Positioning:
 - [Free Space Path Loss (FSPL)](https://en.wikipedia.org/wiki/Free-space_path_loss)
@@ -424,7 +424,7 @@ python app.py
 
 ---
 
-## 🙏 Learning Journey
+## Learning Journey
 
 This project is a **collaborative learning experience** between Duncan (user) and AI (developer).
 
@@ -445,7 +445,7 @@ This project is a **collaborative learning experience** between Duncan (user) an
 
 ---
 
-## 📧 Getting Back Into It
+## Getting Back Into It
 
 **When you return:**
 
@@ -486,4 +486,4 @@ This project is a **collaborative learning experience** between Duncan (user) an
 
 ---
 
-**Have fun tracking the trackers! 🎯📡📶**
+**Have fun tracking the trackers!**
