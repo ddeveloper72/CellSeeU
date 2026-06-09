@@ -32,6 +32,7 @@ bin/
 *.apk
 *.aab
 .gradle/
+android_scanner/*.zip
 
 # IDE and editors
 .vscode/
@@ -44,7 +45,6 @@ bin/
 # OS files
 Thumbs.db
 desktop.ini
-gradle.zip
 
 # Logs
 *.log
