@@ -32,7 +32,7 @@ bin/
 *.apk
 *.aab
 .gradle/
-android_scanner/gradle.zip
+gradle.zip
 
 # IDE and editors
 .vscode/
