@@ -44,6 +44,7 @@ bin/
 # OS files
 Thumbs.db
 desktop.ini
+gradle.zip
 
 # Logs
 *.log
