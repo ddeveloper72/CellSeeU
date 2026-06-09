@@ -68,3 +68,6 @@ package-lock.json
 
 # Ignore vscode AI rules (custom)
 .github\instructions\codacy.instructions.md
+
+# docs
+COMREG_DATA_SOURCE.md
