@@ -73,3 +73,4 @@ package-lock.json
 # docs
 COMREG_DATA_SOURCE.md
 "android_scanner/gradle.zip" 
+.codacy/cli.sh
