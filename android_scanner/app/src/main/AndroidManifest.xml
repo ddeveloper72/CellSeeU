@@ -44,8 +44,14 @@
         <activity
             android:name=".WiFi3DActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
             android:label="WiFi 3D View"
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar">
+        </activity>
+
+        <activity
+            android:name=".SignalMapActivity"
+            android:exported="false"
+            android:label="Signal Map"
             android:theme="@style/Theme.AppCompat.Light.NoActionBar">
         </activity>
 

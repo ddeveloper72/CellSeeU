@@ -18,6 +18,40 @@ import java.nio.charset.StandardCharsets;
 public class ApiClient {
     
     private static final String TAG = "ApiClient";
+
+    public static boolean postJson(String endpoint, JSONObject payload) {
+        HttpURLConnection connection = null;
+
+        try {
+            URL url = new URL(ServerConfig.SERVER_URL + endpoint);
+            connection = (HttpURLConnection) url.openConnection();
+            connection.setRequestMethod("POST");
+            connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+            connection.setRequestProperty("Accept", "application/json");
+            connection.setConnectTimeout(ServerConfig.CONNECTION_TIMEOUT_MS);
+            connection.setReadTimeout(ServerConfig.READ_TIMEOUT_MS);
+            connection.setDoOutput(true);
+            connection.setDoInput(true);
+
+            byte[] outputBytes = payload.toString().getBytes(StandardCharsets.UTF_8);
+            try (OutputStream os = connection.getOutputStream()) {
+                os.write(outputBytes);
+                os.flush();
+            }
+
+            int responseCode = connection.getResponseCode();
+            Log.i(TAG, "POST " + endpoint + " response code: " + responseCode);
+            return responseCode == HttpURLConnection.HTTP_OK ||
+                    responseCode == HttpURLConnection.HTTP_CREATED;
+        } catch (Exception e) {
+            Log.e(TAG, "Error posting JSON to " + endpoint, e);
+            return false;
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
+    }
     
     /**
      * Upload tower data to Flask server

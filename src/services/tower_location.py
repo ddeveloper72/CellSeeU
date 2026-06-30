@@ -81,7 +81,7 @@ class TowerLocationService:
                     lon = float(data['lon'])
                     range_m = int(data.get('range', 1000))  # Default 1km range
                     
-                    logger.info(f"✓ Found tower location: {lat:.6f}, {lon:.6f} (range={range_m}m)")
+                    logger.info("Found tower location: %.6f, %.6f (range=%sm)", lat, lon, range_m)
                     
                     # Cache the result
                     result = (lat, lon, range_m)
@@ -191,7 +191,7 @@ def get_tower_location(
             comreg_result = lookup_comreg_tower(cell_id, mcc, mnc, device_lat, device_lon)
             
             if comreg_result and comreg_result.get('latitude'):
-                logger.info(f"✓ Found tower in ComReg database")
+                logger.info("Found tower in ComReg database")
                 # Calculate distance to device
                 import math
                 lat_diff = comreg_result['latitude'] - device_lat

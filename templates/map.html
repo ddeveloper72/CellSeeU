@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
 {% block title %}Map - CellSeeU{% endblock %}
 
@@ -9,22 +9,16 @@
 
     <!-- Map controls overlay -->
     <div class="map-controls">
-        <button id="btn-center-location" class="map-btn" title="Center on my location">
-            📍
-        </button>
-        <button id="btn-refresh-towers" class="map-btn" title="Refresh towers">
-            🔄
-        </button>
-        <button id="btn-toggle-satellite-view" class="map-btn" title="Toggle satellite view">
-            🛰️
-        </button>
+        <button id="btn-center-location" class="map-btn" title="Center on my location">Location</button>
+        <button id="btn-refresh-towers" class="map-btn" title="Refresh towers">Refresh</button>
+        <button id="btn-toggle-satellite-view" class="map-btn" title="Toggle satellite view">Satellite</button>
     </div>
 
     <!-- Tower details panel (slides in when tower is clicked) -->
     <div id="tower-details-panel" class="details-panel hidden">
         <div class="panel-header">
             <h3>Tower Details</h3>
-            <button id="btn-close-panel" class="btn-close">✕</button>
+            <button id="btn-close-panel" class="btn-close">Close</button>
         </div>
         <div id="tower-details-content" class="panel-content">
             <!-- Populated dynamically via JavaScript -->
@@ -34,23 +28,23 @@
     <!-- Legend -->
     <div class="map-legend">
         <div class="legend-item">
-            <span class="legend-icon" style="background: #10b981;">●</span>
+            <span class="legend-icon" style="background: #10b981;"></span>
             <span>Excellent Signal</span>
         </div>
         <div class="legend-item">
-            <span class="legend-icon" style="background: #eab308;">●</span>
+            <span class="legend-icon" style="background: #eab308;"></span>
             <span>Good Signal</span>
         </div>
         <div class="legend-item">
-            <span class="legend-icon" style="background: #ef4444;">●</span>
+            <span class="legend-icon" style="background: #ef4444;"></span>
             <span>Weak Signal</span>
         </div>
         <div class="legend-item">
-            <span class="legend-icon satellite">🛰️</span>
+            <span class="legend-icon satellite">SAT</span>
             <span>Satellite</span>
         </div>
         <div class="legend-item">
-            <span class="legend-icon">📍</span>
+            <span class="legend-icon">YOU</span>
             <span>Your Location</span>
         </div>
     </div>

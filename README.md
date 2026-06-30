@@ -2,7 +2,7 @@
 
 **Complete cellular, WiFi, and wireless tracking detection system**
 
-Track what services can see your device in real-time using IMEI detection, WiFi triangulation, and directional positioning with compass orientation.
+Track what services can see your device in real-time using IMEI detection, WiFi signal mapping, and scanner location/orientation samples.
 
 ---
 
@@ -11,12 +11,12 @@ Track what services can see your device in real-time using IMEI detection, WiFi 
 **CellSeeU** shows you which services are tracking your phone by detecting:
 - **Cell towers** that can see your IMEI number
 - **WiFi networks** that can detect your MAC address and probe requests
-- **Estimated WiFi router locations** using directional triangulation
+- **Estimated WiFi router locations** using repeated signal samples
 
 ### Key Privacy Features:
 1. **IMEI Detection Radius** - Visual circle showing which towers can track you
 2. **WiFi MAC Tracking** - Shows which networks detect your WiFi probe requests
-3. **WiFi Triangulation** - Estimates router positions using GPS + compass + signal strength
+3. **WiFi Signal Mapping** - Estimates likely router positions using GPS + signal strength samples
 4. **Real-time Dashboard** - Live updates as you move around
 
 ---
@@ -27,8 +27,8 @@ Track what services can see your device in real-time using IMEI detection, WiFi 
 Android App (Scanner)        Backend (Flask)         Frontend (Dashboard)
 ├─ CellTowerScanner.java  →  /api/towers/upload  →  Dashboard Tab
 ├─ WiFiScanner.java       →  /api/wifi           →  WiFi Tab
-├─ OrientationSensor.java →  /api/wifi/positions →  Map View
-└─ GPS Location              (Triangulation)        (WiFi AP Markers)
+├─ OrientationSensor.java →  /api/signal-mapping/sources →  Map View
+└─ GPS Location              (Source estimates)    (WiFi source markers)
 ```
 
 ---
@@ -78,49 +78,31 @@ Navigate to: `http://192.168.0.67:5000`
 
 Tabs:
 - **Dashboard** - Stats and tower list
-- **Map** - Cell towers + WiFi APs + detection radius
-- **WiFi** - Network list + estimated AP positions
+- **Map** - Cell towers + WiFi source estimates + detection radius
+- **WiFi** - Network list + estimated source positions
 
 ---
 
-## WiFi Triangulation (How It Works)
+## WiFi Signal Mapping (How It Works)
 
-### The Physics:
-WiFi signals are like flashlight beams - if you know:
-1. **Your position** (GPS: latitude, longitude)
-2. **Signal strength** (RSSI in dBm)
-3. **Direction you're facing** (compass heading)
+### The Model:
+Each Android upload becomes a measured signal sample: where the device was,
+how accurate the location was, how the device was held, and which WiFi sources
+were seen there.
 
-Then you can estimate where the WiFi router is!
-
-### Algorithm:
-```
-Scan #1: At (53.2919, -6.6860), facing NE (45°), signal -42 dBm
-         → Router is ~25m away in NE direction
-         → Estimated position: (53.2921, -6.6858)
-
-Scan #2: At (53.2925, -6.6865), facing E (90°), signal -38 dBm  
-         → Router is ~20m away in E direction
-         → Estimated position: (53.2925, -6.6863)
-
-Scan #3: At (53.2930, -6.6870), facing SE (135°), signal -45 dBm
-         → Router is ~30m away in SE direction
-         → Estimated position: (53.2928, -6.6868)
-
-Triangulation: Average all positions → (53.2925, -6.6863) ±15m
-```
+Samples are grouped by `type + source_id`. Stronger readings pull the source
+estimate more than weaker readings, and each estimate reports confidence,
+accuracy, sample count, and method metadata.
 
 ### Accuracy:
-- **2 scans**: ±50-100m (basic positioning)
-- **3-5 scans**: ±20-50m (good accuracy)
-- **10+ scans**: ±10-30m (excellent accuracy)
+- **2 samples**: low-confidence baseline
+- **3-5 samples**: useful rough estimate
+- **8+ samples**: better confidence if samples are spatially useful
 
 Factors affecting accuracy:
-- Compass calibration
 - WiFi reflections (multipath)
 - Walls and obstacles
-- Device orientation changes
-
+- GPS accuracy and sample spread
 ---
 
 ## Current Features
@@ -128,32 +110,32 @@ Factors affecting accuracy:
 ### Implemented:
 
 **Android App:**
-- ✅ Cell tower scanning (IMEI, signal, carrier)
-- ✅ WiFi network scanning (SSID, BSSID, signal, security)
-- ✅ Orientation sensors (compass heading, pitch, roll)
-- ✅ GPS location tracking
-- ✅ Combined data upload to server
+- Cell tower scanning (IMEI, signal, carrier)
+- WiFi network scanning (SSID, BSSID, signal, security)
+- Orientation sensors (compass heading, pitch, roll)
+- GPS location tracking
+- Combined data upload to server
 
 **Backend (Flask + Python):**
-- ✅ Tower data storage and enrichment
-- ✅ OpenCelliD integration for tower locations
-- ✅ WiFi scan history storage (100 scans max)
-- ✅ WiFi triangulation service (wifi_triangulation.py)
-- ✅ API endpoints:
+- Tower data storage and enrichment
+- OpenCelliD integration for tower locations
+- WiFi scan history storage (100 scans max)
+- WiFi signal mapping service (signal_mapping.py)
+- API endpoints:
   - `/api/towers` - Get detected towers
   - `/api/towers/upload` - Upload scan data
   - `/api/towers/nearby` - Get OpenCelliD towers in viewport
   - `/api/wifi` - Get WiFi networks
-  - `/api/wifi/positions` - Get triangulated AP positions
+  - `/api/signal-mapping/sources` - Get estimated signal source positions
 
 **Frontend (HTML + JavaScript + Leaflet):**
-- ✅ Interactive map with cell towers
-- ✅ IMEI detection radius visualization
-- ✅ Tracking panel showing services detecting device
-- ✅ WiFi network list with security and signal info
-- ✅ WiFi AP position markers on map
-- ✅ WiFi AP confidence indicators (color-coded)
-- ✅ Real-time auto-refresh
+- Interactive map with cell towers
+- IMEI detection radius visualization
+- Tracking panel showing services detecting device
+- WiFi network list with security and signal info
+- WiFi source estimate markers on map
+- WiFi source confidence indicators (color-coded)
+- Real-time auto-refresh
 
 ---
 
@@ -203,28 +185,32 @@ Upload scan data from Android app.
 ### GET /api/wifi
 Returns WiFi networks from last scan.
 
-### GET /api/wifi/positions
-Returns triangulated WiFi AP positions.
+### GET /api/signal-mapping/sources
+Returns estimated WiFi source positions from generic signal-mapping samples.
 
 **Query Params:**
+- `type` (`wifi`, `bluetooth`, `cellular`, `gnss`, `unknown`, or `all`)
 - `min_confidence` (0-1, default 0.3)
-- `min_scans` (default 2)
+- `min_samples` (default 2)
 
 **Response:**
 ```json
 {
-  "access_points": {
-    "aa:bb:cc:dd:ee:ff": {
-      "ssid": "MyWiFi",
+  "sources": [
+    {
+      "type": "wifi",
+      "source_id": "aa:bb:cc:dd:ee:ff",
+      "label": "MyWiFi",
       "latitude": 53.2925,
       "longitude": -6.6863,
       "confidence": 0.75,
-      "scan_count": 5,
-      "accuracy_m": 25
+      "sample_count": 5,
+      "accuracy_m": 25,
+      "method": "weighted_signal_centroid"
     }
-  },
+  ],
   "count": 1,
-  "scan_history_size": 12
+  "sample_count": 12
 }
 ```
 
@@ -249,7 +235,7 @@ cell_see_u/
 │   └── services/
 │       ├── carrier_lookup.py        # MCC/MNC to carrier name
 │       ├── tower_location.py        # OpenCelliD integration
-│       └── wifi_triangulation.py    # WiFi AP positioning
+│       └── signal_mapping.py         # Generic signal source estimates
 │
 ├── templates/
 │   ├── base.html                    # Base template with navigation
@@ -296,10 +282,10 @@ public class ServerConfig {
 ## Next Steps (Future Enhancements)
 
 ### Priority 1: Complete WiFi Visualization
-- [x] Add WiFi AP markers to map - **DONE**
+- [x] Add WiFi source markers to map - **DONE**
 - [x] Show estimated positions on WiFi page - **DONE**
 - [ ] Add "View on Map" links from WiFi page
-- [ ] Toggle WiFi AP layer on/off on map
+- [ ] Toggle WiFi source layer on/off on map
 
 ### Priority 2: Improve Triangulation
 - [ ] Weighted average by signal confidence
@@ -315,7 +301,7 @@ public class ServerConfig {
 - [ ] /bluetooth page with tracker list
 
 ### Priority 4: Advanced Features
-- [ ] WiFi AP heatmaps (signal strength overlay)
+- [ ] WiFi signal heatmaps (signal strength overlay)
 - [ ] 3D visualization (WiFi signal bubbles)
 - [ ] Historical data storage (SQLite/PostgreSQL)
 - [ ] Multi-device comparison
@@ -352,7 +338,7 @@ public class ServerConfig {
 - **LOCAL ONLY** - Server only accepts connections from your WiFi
 
 ### Permissions Required:
-- **ACCESS_FINE_LOCATION** - GPS for triangulation
+- **ACCESS_FINE_LOCATION** - GPS for signal mapping
 - **READ_PHONE_STATE** - Read IMEI and cell info
 - **ACCESS_WIFI_STATE** - Scan WiFi networks
 - **CHANGE_WIFI_STATE** - Trigger WiFi scans
@@ -384,8 +370,8 @@ python app.py
 ### No WiFi positions showing:
 1. Need at least 2 scans from different locations
 2. Device must have orientation data (heading)
-3. Check `/api/wifi/positions` in browser
-4. Walk 20-30m between scans for best triangulation
+3. Check `/api/signal-mapping/sources` in browser
+4. Walk 20-30m between scans for better source estimates
 
 ### Compass not working:
 1. Calibrate: Wave phone in figure-8 pattern
@@ -419,7 +405,7 @@ This project is a **collaborative learning experience** between Duncan (user) an
 **What we've built together:**
 - Real-time privacy awareness tool
 - Advanced sensor fusion (GPS + Compass + WiFi)
-- Geospatial algorithms (triangulation, distance calculation)
+- Geospatial signal mapping and distance calculation
 - Full-stack application (Android + Flask + JavaScript)
 - Interactive data visualization (Leaflet maps)
 
@@ -451,21 +437,21 @@ This project is a **collaborative learning experience** between Duncan (user) an
 
 3. **Open dashboard**:
    - Navigate to `http://192.168.0.67:5000`
-   - Check **Map** tab for WiFi AP markers (orange/yellow/green circles with 📶)
+   - Check **Map** tab for WiFi source markers (orange/yellow/green circles)
    - Check **WiFi** tab for estimated positions section
 
-4. **Test WiFi triangulation**:
+4. **Test WiFi signal mapping**:
    - Start Android app
    - Scan from current location (note compass direction shown)
    - Walk 20-30 meters away in a different direction
    - Scan again
    - Walk to third location at different angle
    - Scan again
-   - Refresh WiFi page - estimated AP positions should appear!
+   - Refresh WiFi page - estimated source positions should appear!
 
-5. **View AP positions on map**:
+5. **View source positions on map**:
    - Open Map tab
-   - Look for colored 📶 markers (WiFi APs)
+   - Look for colored markers (WiFi sources)
    - Colors indicate confidence:
      - 🟢 Green = High confidence (70%+)
      - 🟡 Yellow = Medium (40-70%)

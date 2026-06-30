@@ -96,6 +96,39 @@ body {
     flex-direction: column;
 }
 
+.icon-sprite {
+    position: absolute;
+    width: 0;
+    height: 0;
+    overflow: hidden;
+}
+
+.ui-icon {
+    width: 1em;
+    height: 1em;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    fill: none;
+    flex: 0 0 auto;
+}
+
+.icon-inline {
+    margin-right: var(--spacing-xs);
+    vertical-align: -0.14em;
+}
+
+.marker-icon {
+    width: 1.1rem;
+    height: 1.1rem;
+    color: white;
+}
+
+.marker-icon-dark {
+    color: var(--text-primary);
+}
+
 /* ============================================
    Typography
    ============================================ */
@@ -379,7 +412,6 @@ a:hover {
     border-radius: 50%;
     border: 3px solid white;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-    font-size: 20px;
     cursor: pointer;
     transition: transform 0.2s ease;
 }
@@ -425,10 +457,26 @@ a:hover {
     background: #9ca3af !important; /* Gray background */
     border: 2px solid white;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
-    font-size: 16px;
     cursor: pointer;
     transition: all 0.2s ease;
     position: relative; /* For badge positioning */
+}
+
+.device-marker .pulse {
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--primary-color);
+    border: 2px solid white;
+    box-shadow: var(--shadow-md);
+    color: white;
+}
+
+.wifi-ap-marker div {
+    color: white;
 }
 
 .nearby-tower-marker div:hover {

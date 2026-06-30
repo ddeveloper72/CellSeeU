@@ -14,8 +14,8 @@ public class WiFiNetwork3D {
     public boolean isConnected;
     
     // 3D position (spherical coordinates)
-    public float azimuth;       // Horizontal angle (0-360°)
-    public float elevation;     // Vertical angle (-90 to 90°)
+    public float azimuth;       // Horizontal angle (0-360Â°)
+    public float elevation;     // Vertical angle (-90 to 90Â°)
     public float distance;      // Distance from center (based on signal strength)
     
     // Visual properties
@@ -50,10 +50,10 @@ public class WiFiNetwork3D {
         this.color = calculateColor(signalStrength);
         this.alpha = 0.9f;
         
-        // Distribute networks randomly in 3D space for now
-        // This will be updated with actual compass bearings when available
-        this.azimuth = (float) (Math.random() * 360);
-        this.elevation = (float) ((Math.random() - 0.5) * 120); // ±60°
+        // Use stable defaults; activity updates bearings from compass data.
+        float stableOffset = stableOffset();
+        this.azimuth = stableOffset * 360f;
+        this.elevation = (stableOffset - 0.5f) * 80f;
     }
     
     /**
@@ -114,7 +114,15 @@ public class WiFiNetwork3D {
      * Update azimuth based on actual compass bearing
      */
     public void updateBearing(float bearing) {
-        this.azimuth = bearing;
+        this.azimuth = normalizeDegrees(bearing);
+    }
+
+    /**
+     * Update azimuth using the phone heading and stable spacing by network index.
+     */
+    public void updateBearing(float heading, int index, int total) {
+        float spacing = total > 0 ? (360f * index / total) : 0f;
+        this.azimuth = normalizeDegrees(heading + spacing);
     }
     
     /**
@@ -124,7 +132,7 @@ public class WiFiNetwork3D {
         switch (mode) {
             case NAME:
                 String name = (ssid != null && !ssid.isEmpty()) ? ssid : "<Hidden>";
-                return isConnected ? name + " ★" : name;
+                return isConnected ? name + " *" : name;
             
             case SIGNAL:
                 return signalStrength + " dBm";
@@ -153,12 +161,30 @@ public class WiFiNetwork3D {
     
     @Override
     public String toString() {
-        return String.format("%s (%d dBm, Ch %d) at (%.1f°, %.1f°, %.1fm)", 
+        return String.format("%s (%d dBm, Ch %d) at (%.1f deg, %.1f deg, %.1fm)",
             ssid != null ? ssid : "<Hidden>", 
             signalStrength,
             channel,
             azimuth, 
             elevation, 
             distance);
+    }
+
+    private float stableOffset() {
+        String key = bssid != null && !bssid.isEmpty() ? bssid : ssid;
+        if (key == null) {
+            key = "";
+        }
+
+        int hash = 0;
+        for (int i = 0; i < key.length(); i++) {
+            hash = 31 * hash + key.charAt(i);
+        }
+        return (Math.abs(hash) % 1000) / 1000f;
+    }
+
+    private float normalizeDegrees(float degrees) {
+        float normalized = degrees % 360f;
+        return normalized < 0 ? normalized + 360f : normalized;
     }
 }

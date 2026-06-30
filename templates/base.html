@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 
 <head>
@@ -21,10 +21,68 @@
 </head>
 
 <body>
+    <svg class="icon-sprite" aria-hidden="true" focusable="false">
+        <symbol id="icon-tower" viewBox="0 0 24 24">
+            <path d="M12 3v18" />
+            <path d="m8 21 4-8 4 8" />
+            <path d="M8.5 6.5a5 5 0 0 0 0 7" />
+            <path d="M15.5 6.5a5 5 0 0 1 0 7" />
+            <path d="M5.5 4a9 9 0 0 0 0 13" />
+            <path d="M18.5 4a9 9 0 0 1 0 13" />
+        </symbol>
+        <symbol id="icon-satellite" viewBox="0 0 24 24">
+            <path d="m13 7 4 4" />
+            <path d="m9 11 4 4" />
+            <path d="m8 7 9 9" />
+            <path d="M5 14 14 5l5 5-9 9z" />
+            <path d="M6 18 3 21" />
+            <path d="M18 6l3-3" />
+        </symbol>
+        <symbol id="icon-wifi" viewBox="0 0 24 24">
+            <path d="M5 13a10 10 0 0 1 14 0" />
+            <path d="M8.5 16.5a5 5 0 0 1 7 0" />
+            <path d="M12 20h.01" />
+        </symbol>
+        <symbol id="icon-location" viewBox="0 0 24 24">
+            <path d="M12 21s7-5.3 7-11a7 7 0 1 0-14 0c0 5.7 7 11 7 11z" />
+            <circle cx="12" cy="10" r="2.5" />
+        </symbol>
+        <symbol id="icon-radio" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="2" />
+            <path d="M16.2 7.8a6 6 0 0 1 0 8.4" />
+            <path d="M7.8 7.8a6 6 0 0 0 0 8.4" />
+            <path d="M19 5a10 10 0 0 1 0 14" />
+            <path d="M5 5a10 10 0 0 0 0 14" />
+        </symbol>
+        <symbol id="icon-check" viewBox="0 0 24 24">
+            <path d="m5 12 4 4L19 6" />
+        </symbol>
+        <symbol id="icon-alert" viewBox="0 0 24 24">
+            <path d="M12 3 2.5 20h19z" />
+            <path d="M12 9v4" />
+            <path d="M12 17h.01" />
+        </symbol>
+        <symbol id="icon-target" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="8" />
+            <circle cx="12" cy="12" r="3" />
+            <path d="M12 2v4" />
+            <path d="M12 18v4" />
+            <path d="M2 12h4" />
+            <path d="M18 12h4" />
+        </symbol>
+        <symbol id="icon-chart" viewBox="0 0 24 24">
+            <path d="M4 19V5" />
+            <path d="M4 19h16" />
+            <path d="M8 16v-5" />
+            <path d="M12 16V8" />
+            <path d="M16 16v-3" />
+        </symbol>
+    </svg>
+
     <!-- Main navigation -->
     <nav class="navbar">
         <div class="container">
-            <a href="/" class="brand">🗼 CellSeeU</a>
+            <a href="/" class="brand">CellSeeU</a>
             <div class="nav-links">
                 <a href="/" class="nav-link {% if request.path == '/' %}active{% endif %}">Dashboard</a>
                 <a href="/map" class="nav-link {% if request.path == '/map' %}active{% endif %}">Map</a>
@@ -43,7 +101,7 @@
     <footer class="footer">
         <div class="container">
             <p class="footer-text">
-                🔒 Your location data stays on your device.
+                Your location data stays on your device.
                 <a href="#privacy" class="footer-link">Privacy Policy</a>
             </p>
             <p class="footer-legal">

@@ -23,13 +23,21 @@ let map = null;
 let deviceMarker = null;
 let towerMarkers = [];
 let nearbyTowerMarkers = []; // For lazy-loaded towers from OpenCelliD
-let wifiApMarkers = []; // For triangulated WiFi access points
+let wifiApMarkers = []; // For estimated WiFi signal sources
 let detectionRadiusCircle = null; // Visual radius showing IMEI detection zone
 let trackingTowers = new Set(); // Towers currently in detection range
 let currentLocation = null;
 let updateInterval = null;
 let locationWatchId = null;
 let isFirstLocationFix = true;
+
+function iconSvg(name, className = 'ui-icon') {
+    return `<svg class="${className}" aria-hidden="true" focusable="false"><use href="#icon-${name}"></use></svg>`;
+}
+
+function labelledIcon(name, label, className = 'ui-icon icon-inline') {
+    return `${iconSvg(name, className)}${label}`;
+}
 
 /**
  * Initialize the dashboard page
@@ -38,7 +46,7 @@ let isFirstLocationFix = true;
  * and begins periodic tower updates.
  */
 function initializeDashboard() {
-    console.log('🗼 Initializing CellSeeU Dashboard');
+    console.log('Initializing CellSeeU Dashboard');
 
     // Request location permission and start tracking
     requestLocation();
@@ -63,7 +71,7 @@ function initializeDashboard() {
  * and device location indicator.
  */
 function initializeFullMap() {
-    console.log('🗺️ Initializing Full Map');
+    console.log('Initializing Full Map');
 
     // Create map centered on default location
     map = L.map('full-map').setView(CONFIG.mapCenter, CONFIG.mapZoom);
@@ -80,7 +88,7 @@ function initializeFullMap() {
     requestLocation();
     fetchTowers();
 
-    // Fetch WiFi AP positions (if available)
+    // Fetch WiFi source estimates (if available)
     fetchWiFiAccessPoints();
 
     // Setup event listeners
@@ -97,7 +105,7 @@ function initializeFullMap() {
     // Initial fetch of nearby towers  
     fetchNearbyTowers();
 
-    // Refresh WiFi APs every 30 seconds
+    // Refresh WiFi source estimates every 30 seconds
     setInterval(fetchWiFiAccessPoints, 30000);
 }
 
@@ -137,13 +145,13 @@ function initializeMiniMap() {
  * Updates are sent to backend for distance calculations.
  * 
  * Why these settings:
- * - enableHighAccuracy: true - Use GPS instead of WiFi/cell triangulation
+ * - enableHighAccuracy: true - Use GPS instead of WiFi/cell location
  * - timeout: 30000 - GPS needs time for first fix (up to 30s)
  * - maximumAge: 0 - Always get fresh position, never use cache
  */
 function requestLocation() {
     if (!('geolocation' in navigator)) {
-        console.error('❌ Geolocation not supported');
+        console.error('Geolocation not supported');
         updateLocationCard('Geolocation not available in this browser');
         return;
     }
@@ -154,7 +162,7 @@ function requestLocation() {
     }
 
     // Show "acquiring location" message
-    updateLocationCard('🔍 Acquiring GPS location...');
+    updateLocationCard('Acquiring GPS location...');
 
     // Get initial position with longer timeout for first GPS fix
     navigator.geolocation.getCurrentPosition(
@@ -191,7 +199,7 @@ function requestLocation() {
  */
 function onLocationSuccess(position) {
     const accuracy = Math.round(position.coords.accuracy);
-    console.log(`📍 Location acquired (±${accuracy}m accuracy)`);
+    console.log(`Location acquired (+/-${accuracy}m accuracy)`);
 
     currentLocation = {
         latitude: position.coords.latitude,
@@ -211,12 +219,12 @@ function onLocationSuccess(position) {
     if (map && isFirstLocationFix) {
         map.setView([currentLocation.latitude, currentLocation.longitude], 15);
         isFirstLocationFix = false;
-        console.log('📍 Map centered on your location');
+        console.log('Map centered on your location');
     }
 
     // Log accuracy warning if GPS is not precise
     if (accuracy > 100) {
-        console.warn(`⚠️ Location accuracy is low (±${accuracy}m). Move to area with better GPS signal.`);
+        console.warn(`Location accuracy is low (+/-${accuracy}m). Move to area with better GPS signal.`);
     }
 }
 
@@ -230,7 +238,7 @@ function onLocationSuccess(position) {
  * @note Implements retry logic for timeout errors
  */
 function onLocationError(error) {
-    console.error('❌ Location error:', error.message);
+    console.error('Location error:', error.message);
 
     let message = 'Unable to get location';
     let shouldRetry = false;
@@ -254,9 +262,9 @@ function onLocationError(error) {
     // Retry after delay for timeout/unavailable errors
     // GPS often needs more time for first fix outdoors
     if (shouldRetry) {
-        console.log('🔄 Will retry location in 5 seconds...');
+        console.log('Will retry location in 5 seconds...');
         setTimeout(() => {
-            console.log('🔄 Retrying location request...');
+            console.log('Retrying location request...');
             requestLocation();
         }, 5000);
     }
@@ -279,7 +287,7 @@ async function fetchTowers() {
         const data = await response.json();
         const towers = data.towers || [];
 
-        console.log(`📡 Fetched ${towers.length} towers`);
+        console.log(`Fetched ${towers.length} towers`);
 
         // Update UI
         updateTowerList(towers);
@@ -288,7 +296,7 @@ async function fetchTowers() {
 
         // Use device location from Android app if available
         if (data.device_location && data.device_location.latitude) {
-            console.log('📍 Using location from Android app:', data.device_location);
+            console.log('Using location from Android app:', data.device_location);
             currentLocation = {
                 latitude: data.device_location.latitude,
                 longitude: data.device_location.longitude,
@@ -312,19 +320,19 @@ async function fetchTowers() {
             if (map && isFirstLocationFix) {
                 map.setView([currentLocation.latitude, currentLocation.longitude], 15);
                 isFirstLocationFix = false;
-                console.log('📍 Map centered on your location from Android');
+                console.log('Map centered on your location from Android');
 
                 // Load nearby towers now that we have user location
                 fetchNearbyTowers();
             }
         } else if (!currentLocation) {
             // Fallback to browser geolocation if no Android location
-            console.log('📍 No location from Android, trying browser GPS...');
+            console.log('No location from Android, trying browser GPS...');
             requestLocation();
         }
 
     } catch (error) {
-        console.error('❌ Error fetching towers:', error);
+        console.error('Error fetching towers:', error);
         // Don't expose error details to user
         showError('Unable to fetch tower data. Please try again.');
     }
@@ -338,7 +346,7 @@ async function fetchTowers() {
  */
 async function fetchNearbyTowers() {
     if (!map) {
-        console.log('⏸️ Map not initialized, skipping nearby tower fetch');
+        console.log('Map not initialized, skipping nearby tower fetch');
         return;
     }
 
@@ -350,7 +358,7 @@ async function fetchNearbyTowers() {
         const minLon = bounds.getWest();
         const maxLon = bounds.getEast();
 
-        console.log(`🗺️ Fetching towers in view: ${minLat.toFixed(3)},${minLon.toFixed(3)} to ${maxLat.toFixed(3)},${maxLon.toFixed(3)}`);
+        console.log(`Fetching towers in view: ${minLat.toFixed(3)},${minLon.toFixed(3)} to ${maxLat.toFixed(3)},${maxLon.toFixed(3)}`);
 
         // Fetch from API
         const response = await fetch(
@@ -364,42 +372,54 @@ async function fetchNearbyTowers() {
         const data = await response.json();
         const towers = data.towers || [];
 
-        console.log(`📡 Found ${towers.length} nearby towers from OpenCelliD`);
+        console.log(`Found ${towers.length} nearby towers from OpenCelliD`);
 
         // Cluster nearby cells into tower sites (cells within 100m = same tower)
         const clusteredTowers = clusterNearbyTowers(towers, 0.1); // 0.1 km = 100m
-        console.log(`📍 Clustered ${towers.length} cells into ${clusteredTowers.length} tower sites`);
+        console.log(`Clustered ${towers.length} cells into ${clusteredTowers.length} tower sites`);
 
         // Update map with clustered tower sites
         updateNearbyTowerMarkers(clusteredTowers);
 
     } catch (error) {
-        console.error('⚠️ Error fetching nearby towers:', error);
+        console.error('Error fetching nearby towers:', error);
         // Fail silently - this is a nice-to-have feature
     }
 }
 
 /**
- * Fetch triangulated WiFi Access Point positions
+ * Fetch estimated WiFi source positions
  * 
- * Gets estimated WiFi AP locations from backend triangulation service.
- * Requires multiple scans from different positions with orientation data.
+ * Gets likely WiFi source locations from the generic signal-mapping service.
+ * Requires multiple scans from different positions.
  */
 async function fetchWiFiAccessPoints() {
     try {
-        const response = await fetch(`${CONFIG.apiBaseUrl}/wifi/positions?min_confidence=0.3&min_scans=2`);
+        const response = await fetch(`${CONFIG.apiBaseUrl}/signal-mapping/sources?type=wifi&min_confidence=0.3&min_samples=2`);
 
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
         }
 
         const data = await response.json();
-        const accessPoints = data.access_points || {};
+        const accessPoints = {};
+        (data.sources || []).forEach(source => {
+            accessPoints[source.source_id] = {
+                ssid: source.label,
+                latitude: source.latitude,
+                longitude: source.longitude,
+                confidence: source.confidence,
+                scan_count: source.sample_count,
+                accuracy_m: source.accuracy_m,
+                method: source.method,
+                last_seen: source.last_seen
+            };
+        });
         const count = Object.keys(accessPoints).length;
 
-        console.log(`📶 Found ${count} WiFi APs with estimated positions (${data.scan_history_size} scans analyzed)`);
+        console.log(`Found ${count} WiFi source estimates (${data.sample_count} samples analyzed)`);
 
-        // Update map with WiFi AP markers
+        // Update map with WiFi source markers
         if (map) {
             updateWiFiApMarkers(accessPoints);
         }
@@ -407,7 +427,7 @@ async function fetchWiFiAccessPoints() {
         return accessPoints;
 
     } catch (error) {
-        console.error('⚠️ Error fetching WiFi AP positions:', error);
+        console.error('Error fetching WiFi source estimates:', error);
         return {};
     }
 }
@@ -514,7 +534,7 @@ function updateLocationCard(location) {
     card.innerHTML = `
         <div class="location-info">
             <p><strong>Coordinates:</strong> ${lat}, ${lon}</p>
-            <p><strong>Accuracy:</strong> ±${accuracy}m</p>
+            <p><strong>Accuracy:</strong> +/-${accuracy}m</p>
             ${location.altitude ? `<p><strong>Altitude:</strong> ${Math.round(location.altitude)}m</p>` : ''}
             ${location.speed ? `<p><strong>Speed:</strong> ${Math.round(location.speed * 3.6)} km/h</p>` : ''}
         </div>
@@ -523,7 +543,7 @@ function updateLocationCard(location) {
     // Update stat card
     const accuracyStat = document.getElementById('location-accuracy');
     if (accuracyStat) {
-        accuracyStat.textContent = `±${accuracy}m`;
+        accuracyStat.textContent = `+/-${accuracy}m`;
     }
 }
 
@@ -564,12 +584,16 @@ function updateTowerList(towers) {
  * @returns {string} HTML string for tower card
  */
 function createTowerCard(tower) {
-    const typeIcon = tower.tower_type === 'NON_TERRESTRIAL_SATELLITE' ? '🛰️' : '🗼';
+    const typeIcon = tower.tower_type === 'NON_TERRESTRIAL_SATELLITE'
+        ? iconSvg('satellite', 'ui-icon icon-inline')
+        : iconSvg('tower', 'ui-icon icon-inline');
     const typeClass = tower.tower_type === 'NON_TERRESTRIAL_SATELLITE' ? 'satellite' : 'terrestrial';
-    const connectedBadge = tower.registered ? '<span class="badge">✅ Connected</span>' : '';
+    const connectedBadge = tower.registered
+        ? `<span class="badge">${labelledIcon('check', 'Connected')}</span>`
+        : '';
 
     // Signal strength bar visual
-    const signalBars = '📶'.repeat(Math.min(tower.signal_bars || 0, 5));
+    const signalBars = `${tower.signal_bars || 0}/5`;
 
     return `
         <div class="tower-card ${typeClass}" data-cell-id="${tower.cell_id}">
@@ -656,9 +680,9 @@ function setupMapControls() {
         btnCenter.addEventListener('click', () => {
             if (currentLocation && map) {
                 map.setView([currentLocation.latitude, currentLocation.longitude], 15);
-                console.log('📍 Map re-centered on your location');
+                console.log('Map re-centered on your location');
             } else {
-                console.warn('⚠️ Location not available yet');
+                console.warn('Location not available yet');
                 showError('Waiting for GPS location...');
             }
         });
@@ -683,7 +707,7 @@ function startPeriodicUpdates() {
     }
 
     updateInterval = setInterval(fetchTowers, CONFIG.refreshInterval);
-    console.log(`🔄 Periodic updates every ${CONFIG.refreshInterval / 1000}s`);
+    console.log(`Periodic updates every ${CONFIG.refreshInterval / 1000}s`);
 }
 
 /**
@@ -739,13 +763,13 @@ function updateDetectionRadius(location, signalDbm) {
     }).addTo(map);
 
     detectionRadiusCircle.bindPopup(`
-        <strong>🔴 IMEI Detection Zone</strong><br>
+        <strong>${labelledIcon('target', 'IMEI Detection Zone')}</strong><br>
         Radius: ${radius}m<br>
         Signal: ${signalDbm} dBm<br>
         Towers in this zone can detect your device
     `);
 
-    console.log(`🔴 IMEI detection radius: ${radius}m (signal: ${signalDbm} dBm)`);
+    console.log(`IMEI detection radius: ${radius}m (signal: ${signalDbm} dBm)`);
 }
 
 /**
@@ -769,7 +793,7 @@ function updateDeviceMarker(location) {
         deviceMarker = L.marker(latLng, {
             icon: L.divIcon({
                 className: 'device-marker',
-                html: '<div class="pulse">📍</div>',
+                html: `<div class="pulse">${iconSvg('location', 'ui-icon marker-icon')}</div>`,
                 iconSize: [30, 30]
             })
         }).addTo(map);
@@ -807,7 +831,8 @@ function updateTowerMarkers(towers) {
         if (!tower.latitude || !tower.longitude) return;
 
         const signalColor = getSignalColor(tower.signal_strength);
-        const icon = tower.tower_type === 'NON_TERRESTRIAL_SATELLITE' ? '🛰️' : '🗼';
+        const iconName = tower.tower_type === 'NON_TERRESTRIAL_SATELLITE' ? 'satellite' : 'tower';
+        const icon = iconSvg(iconName, 'ui-icon marker-icon');
         const registeredClass = tower.registered ? ' registered' : '';
 
         const marker = L.marker([tower.latitude, tower.longitude], {
@@ -823,15 +848,15 @@ function updateTowerMarkers(towers) {
             <strong>${icon} ${tower.network_type}</strong><br>
             Carrier: ${escapeHtml(tower.carrier || `${tower.mcc}-${tower.mnc}`)}<br>
             Cell ID: ${tower.cell_id}<br>
-            Signal: ${tower.signal_strength} dBm (${tower.signal_bars}📶)<br>
+            Signal: ${tower.signal_strength} dBm (${tower.signal_bars}/5)<br>
             ${tower.distance_meters ? `Distance: ${Math.round(tower.distance_meters)}m<br>` : ''}
-            ${tower.registered ? '✅ Connected' : ''}
+            ${tower.registered ? labelledIcon('check', 'Connected') : ''}
         `);
 
         towerMarkers.push(marker);
     });
 
-    console.log(`🗺️ Added ${towerMarkers.length} tower markers to map`);
+    console.log(`Added ${towerMarkers.length} tower markers to map`);
 
     // Auto-fit map bounds to show all towers (if we have any)
     if (towerMarkers.length > 0) {
@@ -862,7 +887,9 @@ function updateNearbyTowerMarkers(towers) {
     towers.forEach(tower => {
         if (!tower.latitude || !tower.longitude) return;
 
-        const icon = tower.tower_type === 'NON_TERRESTRIAL_SATELLITE' ? '🛰️' : '📡';
+        const icon = tower.tower_type === 'NON_TERRESTRIAL_SATELLITE'
+            ? iconSvg('satellite', 'ui-icon marker-icon')
+            : iconSvg('radio', 'ui-icon marker-icon');
         const cellCount = tower.cell_count || 1;
         const carriers = tower.carriers || [tower.carrier];
         const technologies = tower.technologies || [tower.network_type];
@@ -880,9 +907,9 @@ function updateNearbyTowerMarkers(towers) {
 
         // Build popup content
         let popupContent = `<strong>${icon} Tower Site</strong><br>`;
-        popupContent += `📱 ${cellCount} cell${cellCount > 1 ? 's' : ''}<br>`;
-        popupContent += `📡 ${carriers.join(', ')}<br>`;
-        popupContent += `🔧 ${technologies.join(', ')}<br>`;
+        popupContent += `${cellCount} cell${cellCount > 1 ? 's' : ''}<br>`;
+        popupContent += `Carriers: ${carriers.join(', ')}<br>`;
+        popupContent += `Technologies: ${technologies.join(', ')}<br>`;
 
         // If cluster, show cell details
         if (tower.cells && tower.cells.length > 1) {
@@ -890,7 +917,7 @@ function updateNearbyTowerMarkers(towers) {
             popupContent += `<div style="max-height: 150px; overflow-y: auto; font-size: 0.85em;">`;
             tower.cells.slice(0, 10).forEach(cell => {
                 const carrierShort = (cell.carrier || '').replace(' Ireland', '');
-                popupContent += `• ${cell.network_type} - ${carrierShort} (${cell.cell_id})<br>`;
+                popupContent += `- ${cell.network_type} - ${carrierShort} (${cell.cell_id})<br>`;
             });
             if (tower.cells.length > 10) {
                 popupContent += `<em>...and ${tower.cells.length - 10} more</em><br>`;
@@ -904,23 +931,23 @@ function updateNearbyTowerMarkers(towers) {
         nearbyTowerMarkers.push(marker);
     });
 
-    console.log(`🗺️ Added ${nearbyTowerMarkers.length} nearby tower markers`);
+    console.log(`Added ${nearbyTowerMarkers.length} nearby tower markers`);
 }
 
 /**
- * Update WiFi Access Point markers on map
+ * Update WiFi source markers on map
  * 
- * Displays triangulated WiFi AP locations with confidence indicators.
- * @param {Object} accessPoints - WiFi APs from /api/wifi/positions
+ * Displays signal-mapping WiFi source estimates with confidence indicators.
+ * @param {Object} accessPoints - WiFi sources from /api/signal-mapping/sources
  */
 function updateWiFiApMarkers(accessPoints) {
     if (!map) return;
 
-    // Remove existing WiFi AP markers
+    // Remove existing WiFi source markers
     wifiApMarkers.forEach(marker => map.removeLayer(marker));
     wifiApMarkers = [];
 
-    // Add marker for each WiFi AP
+    // Add marker for each WiFi source
     Object.entries(accessPoints).forEach(([bssid, ap]) => {
         if (!ap.latitude || !ap.longitude) return;
 
@@ -937,12 +964,12 @@ function updateWiFiApMarkers(accessPoints) {
         const marker = L.marker([ap.latitude, ap.longitude], {
             icon: L.divIcon({
                 className: 'wifi-ap-marker',
-                html: `<div style="background-color: ${color}; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-center; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">📶</div>`,
+                html: `<div style="background-color: ${color}; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">${iconSvg('wifi', 'ui-icon marker-icon')}</div>`,
                 iconSize: [24, 24]
             })
         }).addTo(map);
 
-        // Add accuracy circle around AP
+        // Add accuracy circle around the source estimate
         const accuracyCircle = L.circle([ap.latitude, ap.longitude], {
             radius: accuracy,
             color: color,
@@ -953,14 +980,13 @@ function updateWiFiApMarkers(accessPoints) {
         }).addTo(map);
 
         // Build popup content
-        let popupContent = `<strong>📶 WiFi Access Point</strong><br>`;
+        let popupContent = `<strong>${labelledIcon('wifi', 'WiFi Source Estimate')}</strong><br>`;
         popupContent += `<strong style="font-size: 1.1em;">${escapeHtml(ap.ssid)}</strong><br>`;
-        popupContent += `🔒 ${ap.security || 'Unknown'}<br>`;
-        popupContent += `📍 Position: ${ap.latitude.toFixed(6)}, ${ap.longitude.toFixed(6)}<br>`;
-        popupContent += `✨ Confidence: ${(confidence * 100).toFixed(0)}%<br>`;
-        popupContent += `📊 Scans: ${scanCount}<br>`;
-        popupContent += `🎯 Accuracy: ±${accuracy}m<br>`;
-        popupContent += `<br><em style="color: #888; font-size: 0.85em;">Estimated from ${scanCount} scans with device orientation</em>`;
+        popupContent += `Position: ${ap.latitude.toFixed(6)}, ${ap.longitude.toFixed(6)}<br>`;
+        popupContent += `Confidence: ${(confidence * 100).toFixed(0)}%<br>`;
+        popupContent += `Scans: ${scanCount}<br>`;
+        popupContent += `Accuracy: +/-${accuracy}m<br>`;
+        popupContent += `<br><em style="color: #888; font-size: 0.85em;">${escapeHtml(ap.method || 'weighted_signal_centroid')}</em>`;
 
         marker.bindPopup(popupContent);
 
@@ -969,7 +995,7 @@ function updateWiFiApMarkers(accessPoints) {
         wifiApMarkers.push(accuracyCircle);
     });
 
-    console.log(`📶 Added ${Object.keys(accessPoints).length} WiFi AP markers`);
+    console.log(`Added ${Object.keys(accessPoints).length} WiFi source markers`);
 }
 
 /**
@@ -983,14 +1009,14 @@ function updateWiFiApMarkers(accessPoints) {
  */
 function calculateDistance(lat1, lon1, lat2, lon2) {
     const R = 6371000; // Earth's radius in meters
-    const φ1 = lat1 * Math.PI / 180;
-    const φ2 = lat2 * Math.PI / 180;
-    const Δφ = (lat2 - lat1) * Math.PI / 180;
-    const Δλ = (lon2 - lon1) * Math.PI / 180;
+    const phi1 = lat1 * Math.PI / 180;
+    const phi2 = lat2 * Math.PI / 180;
+    const deltaPhi = (lat2 - lat1) * Math.PI / 180;
+    const deltaLambda = (lon2 - lon1) * Math.PI / 180;
 
-    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-        Math.cos(φ1) * Math.cos(φ2) *
-        Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const a = Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+        Math.cos(phi1) * Math.cos(phi2) *
+        Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
     return R * c; // Distance in meters
@@ -1049,13 +1075,13 @@ function updateDetectionRadius(location, signalDbm) {
     }).addTo(map);
 
     detectionRadiusCircle.bindPopup(`
-        <strong>🔴 IMEI Detection Zone</strong><br>
+        <strong>${labelledIcon('target', 'IMEI Detection Zone')}</strong><br>
         Radius: ${radius}m<br>
         Signal: ${signalDbm} dBm<br>
         Towers in this zone can detect your device
     `);
 
-    console.log(`🔴 IMEI detection radius: ${radius}m (signal: ${signalDbm} dBm)`);
+    console.log(`IMEI detection radius: ${radius}m (signal: ${signalDbm} dBm)`);
 }
 
 /**
@@ -1128,9 +1154,9 @@ function updateTrackingPanel(towers, location, detectionRadius) {
     const connectedTower = towers.find(t => t.registered);
 
     let html = `
-        <h3>🔴 Services Detecting Your IMEI</h3>
+        <h3>${labelledIcon('target', 'Services Detecting Your IMEI')}</h3>
         <div class="tracking-warning">
-            ⚠️ These services can currently see your device identifier
+            ${labelledIcon('alert', 'These services can currently see your device identifier')}
         </div>
     `;
 
@@ -1138,26 +1164,26 @@ function updateTrackingPanel(towers, location, detectionRadius) {
     if (connectedTower) {
         html += `
             <div class="tracking-item active-connection">
-                <div class="tracking-badge">🔴 ACTIVE CONNECTION</div>
+                <div class="tracking-badge">ACTIVE CONNECTION</div>
                 <strong>${escapeHtml(connectedTower.carrier || 'Unknown')}</strong><br>
                 <small>Cell ID: ${connectedTower.cell_id}</small><br>
                 <small>Signal: ${connectedTower.signal_strength} dBm</small><br>
-                <small>📍 Definitely tracking IMEI</small>
+                <small>Definitely tracking IMEI</small>
             </div>
         `;
     }
 
     // Nearby towers in detection range
     if (towersInRange.length > 0) {
-        html += `<h4>⚠️ Nearby Towers (${towersInRange.length} in range)</h4>`;
+        html += `<h4>${labelledIcon('alert', `Nearby Towers (${towersInRange.length} in range)`)}</h4>`;
         towersInRange.slice(0, 10).forEach(tower => {
             html += `
                 <div class="tracking-item potential-detection">
-                    <div class="tracking-badge">⚠️ IN RANGE</div>
+                    <div class="tracking-badge">IN RANGE</div>
                     <strong>${escapeHtml(tower.carrier || 'Unknown Operator')}</strong><br>
                     <small>${tower.network_type || tower.radio || 'Cellular'}</small><br>
                     <small>Distance: ${Math.round(tower.distance)}m</small><br>
-                    <small>📡 Can detect scanning signals</small>
+                    <small>Can detect scanning signals</small>
                 </div>
             `;
         });
@@ -1170,7 +1196,7 @@ function updateTrackingPanel(towers, location, detectionRadius) {
 
     trackingPanel.innerHTML = html;
 
-    console.log(`🔴 Tracking update: ${trackingTowers.size} towers can detect device`);
+    console.log(`Tracking update: ${trackingTowers.size} towers can detect device`);
 }
 
 /**

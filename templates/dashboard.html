@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
 {% block title %}Dashboard - CellSeeU{% endblock %}
 
@@ -6,29 +6,29 @@
 <div class="container">
     <!-- Page header -->
     <header class="page-header">
-        <h1>📡 Cell Tower Detection</h1>
+        <h1>Cell Tower Detection</h1>
         <p class="subtitle">Discover terrestrial and satellite networks around you</p>
     </header>
 
     <!-- Stats overview -->
     <section class="stats-grid">
         <div class="stat-card">
-            <div class="stat-icon">🗼</div>
+            <div class="stat-icon" aria-hidden="true"></div>
             <div class="stat-value" id="total-towers">-</div>
             <div class="stat-label">Total Towers</div>
         </div>
         <div class="stat-card">
-            <div class="stat-icon">📶</div>
+            <div class="stat-icon" aria-hidden="true"></div>
             <div class="stat-value" id="connected-tower">-</div>
             <div class="stat-label">Connected To</div>
         </div>
         <div class="stat-card">
-            <div class="stat-icon">🛰️</div>
+            <div class="stat-icon" aria-hidden="true"></div>
             <div class="stat-value" id="satellite-count">-</div>
             <div class="stat-label">Satellites</div>
         </div>
         <div class="stat-card">
-            <div class="stat-icon">📍</div>
+            <div class="stat-icon" aria-hidden="true"></div>
             <div class="stat-value" id="location-accuracy">-</div>
             <div class="stat-label">Location Accuracy</div>
         </div>
@@ -36,31 +36,31 @@
 
     <!-- Device location -->
     <section class="section">
-        <h2>📍 Your Location</h2>
+        <h2>Your Location</h2>
         <div class="location-card" id="location-card">
             <div class="loading">Requesting location permission...</div>
         </div>
         <button id="btn-refresh-location" class="btn btn-primary">
-            🔄 Refresh Location
+            Refresh Location
         </button>
     </section>
 
     <!-- IMEI Tracking Panel -->
     <section class="section">
         <div id="tracking-panel" class="tracking-panel">
-            <h3>🔴 Services Detecting Your IMEI</h3>
+            <h3>Services Detecting Your IMEI</h3>
             <div class="loading">Analyzing signal range...</div>
         </div>
     </section>
 
     <!-- Tower list -->
     <section class="section">
-        <h2>📡 Detected Towers</h2>
+        <h2>Detected Towers</h2>
         <div class="tower-filters">
             <button class="filter-btn active" data-filter="all">All</button>
-            <button class="filter-btn" data-filter="terrestrial">🗼 Terrestrial</button>
-            <button class="filter-btn" data-filter="satellite">🛰️ Satellite</button>
-            <button class="filter-btn" data-filter="registered">✅ Connected</button>
+            <button class="filter-btn" data-filter="terrestrial">Terrestrial</button>
+            <button class="filter-btn" data-filter="satellite">Satellite</button>
+            <button class="filter-btn" data-filter="registered">Connected</button>
         </div>
         <div id="tower-list" class="tower-grid">
             <div class="loading">Scanning for towers...</div>
@@ -69,9 +69,9 @@
 
     <!-- Quick map preview -->
     <section class="section">
-        <h2>🗺️ Tower Map</h2>
+        <h2>Tower Map</h2>
         <div id="mini-map" class="mini-map"></div>
-        <a href="/map" class="btn btn-secondary">🗺️ View Full Map</a>
+        <a href="/map" class="btn btn-secondary">View Full Map</a>
     </section>
 </div>
 {% endblock %}

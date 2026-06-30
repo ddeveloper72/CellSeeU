@@ -23,6 +23,7 @@ public class MainActivity extends AppCompatActivity {
     private LocationManager locationManager;
     private OrientationSensor orientationSensor;
     private boolean isScanning = false;
+    private String mappingSessionId;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -40,9 +41,9 @@ public class MainActivity extends AppCompatActivity {
         orientationSensor = new OrientationSensor(this);
         if (orientationSensor.sensorsAvailable()) {
             orientationSensor.start();
-            Log.i("MainActivity", "🧭 Orientation sensors started");
+            Log.i("MainActivity", "Orientation sensors started");
         } else {
-            Log.w("MainActivity", "⚠️ Orientation sensors not available");
+            Log.w("MainActivity", "Orientation sensors not available");
         }
         
         scanButton.setOnClickListener(v -> {
@@ -82,7 +83,7 @@ public class MainActivity extends AppCompatActivity {
         
         // WiFi 3D View button
         Button wifi3dButton = new Button(this);
-        wifi3dButton.setText("📡 WiFi 3D View");
+        wifi3dButton.setText("WiFi 3D View");
         wifi3dButton.setTextSize(18);
         wifi3dButton.setBackgroundColor(0xFF4fc3f7);
         wifi3dButton.setTextColor(0xFFFFFFFF);
@@ -97,9 +98,27 @@ public class MainActivity extends AppCompatActivity {
             Intent intent = new Intent(MainActivity.this, WiFi3DActivity.class);
             startActivity(intent);
         });
+
+        Button signalMapButton = new Button(this);
+        signalMapButton.setText("Signal Map");
+        signalMapButton.setTextSize(18);
+        signalMapButton.setBackgroundColor(0xFF1E88E5);
+        signalMapButton.setTextColor(0xFFFFFFFF);
+        signalMapButton.setPadding(20, 20, 20, 20);
+        android.widget.LinearLayout.LayoutParams mapBtnParams = new android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        mapBtnParams.setMargins(0, 16, 0, 0);
+        signalMapButton.setLayoutParams(mapBtnParams);
+        signalMapButton.setOnClickListener(v -> {
+            Intent intent = new Intent(MainActivity.this, SignalMapActivity.class);
+            startActivity(intent);
+        });
         
         layout.addView(statusText);
         layout.addView(scanButton);
+        layout.addView(signalMapButton);
         layout.addView(wifi3dButton);
         
         return layout;
@@ -211,7 +230,7 @@ public class MainActivity extends AppCompatActivity {
                     deviceLocation.put("pitch", orientation.getDouble("pitch"));
                     deviceLocation.put("roll", orientation.getDouble("roll"));
                     deviceLocation.put("cardinal_direction", orientation.getString("cardinal_direction"));
-                    Log.i("MainActivity", "🧭 Device pointing: " + orientation.getString("cardinal_direction") + 
+                    Log.i("MainActivity", "Device pointing: " + orientation.getString("cardinal_direction") + 
                           " (" + Math.round(orientation.getDouble("heading")) + "°)");
                 }
                 
@@ -222,6 +241,7 @@ public class MainActivity extends AppCompatActivity {
                 combinedData.put("wifi_networks", wifiData.getJSONArray("networks"));
                 combinedData.put("wifi_connected", connectedWifi);
                 combinedData.put("wifi_count", wifiData.optInt("count", 0));
+                combinedData.put("mapping_session_id", getMappingSessionId());
                 
                 int towerCount = cellData.getJSONArray("towers").length();
                 int wifiCount = wifiData.optInt("count", 0);
@@ -240,14 +260,14 @@ public class MainActivity extends AppCompatActivity {
                 
                 // Add orientation info if available
                 if (orientationSensor != null && orientationSensor.hasOrientation()) {
-                    towerInfo.append(String.format("\n\n🧭 Facing: %s (%.0f°)", 
+                    towerInfo.append(String.format("\n\nFacing: %s (%.0f°)", 
                         orientationSensor.getCardinalDirection(),
                         orientationSensor.getAzimuth()));
                 }
                 
                 // Add WiFi info
                 if (wifiCount > 0) {
-                    towerInfo.append("\n\n📶 WiFi Networks:");
+                    towerInfo.append("\n\nWiFi Networks:");
                     org.json.JSONArray wifiNetworks = wifiData.getJSONArray("networks");
                     int displayCount = Math.min(3, wifiCount);  // Show top 3
                     for (int i = 0; i < displayCount; i++) {
@@ -266,20 +286,20 @@ public class MainActivity extends AppCompatActivity {
                 String detailedInfo = towerInfo.toString();
                 runOnUiThread(() -> {
                     if (success) {
-                        String message = "✅ Uploaded:\n" +
-                                       "📡 " + towerCount + " cell towers\n" +
-                                       "📶 " + wifiCount + " WiFi networks" + 
+                        String message = "Uploaded:\n" +
+                                       towerCount + " cell towers\n" +
+                                       wifiCount + " WiFi networks" + 
                                        detailedInfo;
                         
                         // Add note if only 1 tower detected
                         if (towerCount == 1) {
-                            message += "\n\n⚠️ Note: Most phones only detect the connected tower. Neighboring cells are often hidden by Android/carrier.";
+                            message += "\n\nNote: Most phones only detect the connected tower. Neighboring cells are often hidden by Android/carrier.";
                         }
                         
                         message += "\n\nServer: " + ServerConfig.SERVER_URL;
                         statusText.setText(message);
                     } else {
-                        statusText.setText("❌ Upload failed. Check network.");
+                        statusText.setText("Upload failed. Check network.");
                     }
                 });
             } catch (Exception e) {
@@ -292,6 +312,13 @@ public class MainActivity extends AppCompatActivity {
         isScanning = false;
         scanButton.setText("Start Scanning");
         statusText.setText("Stopped");
+    }
+
+    private String getMappingSessionId() {
+        if (mappingSessionId == null) {
+            mappingSessionId = "android-" + System.currentTimeMillis();
+        }
+        return mappingSessionId;
     }
 
     // Generate IDs for views

@@ -11,6 +11,9 @@ from functools import wraps
 import time
 import logging
 
+from src.services.scanner_state import calculate_signal_bars, scanner_state
+from src.services.signal_mapping import signal_mapping_service
+
 # Set up logging
 logger = logging.getLogger(__name__)
 
@@ -21,21 +24,6 @@ api = Blueprint('api', __name__, url_prefix='/api')
 _request_counts = {}
 _rate_limit_window = 60  # seconds
 _rate_limit_max_requests = 100  # per window
-
-# Global storage for real tower data from Android app
-_real_tower_data = []
-_device_location = None
-_last_update_time = None
-
-# Global storage for WiFi network data from Android app
-_wifi_networks = []
-_wifi_connected = None
-_wifi_last_update = None
-
-# WiFi scan history for triangulation (stores multiple scans with GPS + orientation)
-_wifi_scan_history = []  # List of {timestamp, location, orientation, networks}
-_max_scan_history = 100  # Keep last 100 scans for triangulation
-
 
 def rate_limit(f):
     """
@@ -143,64 +131,7 @@ def get_towers():
             'message': 'Limit must be between 1 and 1000'
         }), 400
     
-    # Use real tower data from Android app if available, otherwise use mock data
-    global _real_tower_data, _last_update_time
-    
-    if _real_tower_data:
-        # Use real data from Android TelephonyManager
-        towers = _real_tower_data.copy()
-    else:
-        # Fallback to mock tower data for development (Ireland-based for testing)
-        # NOTE: Install and run Android Scanner app to get real tower data
-        towers = [
-            {
-                'cell_id': 45612378,
-                'tower_type': 'TERRESTRIAL',
-                'network_type': 'LTE',
-                'mcc': 272,
-                'mnc': 1,
-                'carrier': 'Vodafone Ireland',
-                'signal_strength': -75,
-                'signal_bars': 5,
-                'registered': True,
-                'latitude': 53.3498,
-                'longitude': -6.2603,
-                'distance_meters': 180,
-                'detected_at': datetime.now(timezone.utc).isoformat()
-            },
-            {
-                'cell_id': 78945612,
-                'tower_type': 'TERRESTRIAL',
-                'network_type': '5G_NR',
-                'mcc': 272,
-                'mnc': 2,
-                'carrier': 'Three Ireland',
-                'signal_strength': -82,
-                'signal_bars': 4,
-                'registered': False,
-                'latitude': 53.3512,
-                'longitude': -6.2585,
-                'distance_meters': 320,
-                'detected_at': datetime.now(timezone.utc).isoformat()
-            },
-            {
-                'cell_id': 87654321,
-                'tower_type': 'NON_TERRESTRIAL_SATELLITE',
-                'network_type': '5G_NR_NTN',
-                'mcc': 901,
-                'mnc': 88,
-                'carrier': 'Starlink (SpaceX)',
-                'signal_strength': -105,
-                'signal_bars': 3,
-                'registered': False,
-                'latitude': 53.3485,
-                'longitude': -6.2520,
-                'distance_meters': 1200,
-                'detected_at': datetime.now(timezone.utc).isoformat()
-            }
-        ]
-    
-    # Variable name changed from mock_towers to towers for compatibility
+    towers = scanner_state.current_towers()
     
     # Apply filter
     if filter_type == 'terrestrial':
@@ -213,14 +144,15 @@ def get_towers():
     # Apply limit
     towers = towers[:limit]
     
-    global _device_location
-    
     return jsonify({
         'towers': towers,
         'count': len(towers),
-        'data_source': 'real' if _real_tower_data else 'mock',
-        'device_location': _device_location,
-        'last_update': _last_update_time.isoformat() if _last_update_time else None,
+        'data_source': scanner_state.tower_data_source,
+        'device_location': scanner_state.device_location,
+        'last_update': (
+            scanner_state.last_update_time.isoformat()
+            if scanner_state.last_update_time else None
+        ),
         'timestamp': datetime.now(timezone.utc).isoformat()
     })
 
@@ -252,8 +184,14 @@ def get_tower_details(cell_id):
             'message': 'Cell ID must be a positive integer'
         }), 400
     
-    # TODO: Query actual tower database
-    # For now, return 404 for all requests
+    for tower in scanner_state.current_towers():
+        if tower.get('cell_id') == cell_id:
+            return jsonify({
+                'tower': tower,
+                'data_source': scanner_state.tower_data_source,
+                'timestamp': datetime.now(timezone.utc).isoformat()
+            })
+
     return jsonify({
         'error': 'Tower not found',
         'cell_id': cell_id
@@ -396,14 +334,33 @@ def get_stats():
         - average_signal: Average signal strength in dBm
         - connected_network: Currently connected network type
     """
-    # TODO: Calculate from actual tower data
+    towers = scanner_state.current_towers()
+    terrestrial = [
+        tower for tower in towers
+        if tower.get('tower_type') == 'TERRESTRIAL'
+    ]
+    satellite = [
+        tower for tower in towers
+        if tower.get('tower_type') == 'NON_TERRESTRIAL_SATELLITE'
+    ]
+    signals = [
+        tower.get('signal_strength') for tower in towers
+        if isinstance(tower.get('signal_strength'), (int, float))
+    ]
+    connected = next((tower for tower in towers if tower.get('registered')), None)
     
     return jsonify({
-        'total_towers': 2,
-        'terrestrial_count': 1,
-        'satellite_count': 1,
-        'average_signal': -95,
-        'connected_network': 'LTE',
+        'total_towers': len(towers),
+        'terrestrial_count': len(terrestrial),
+        'satellite_count': len(satellite),
+        'average_signal': round(sum(signals) / len(signals), 1) if signals else None,
+        'connected_network': connected.get('network_type') if connected else None,
+        'connected_carrier': connected.get('carrier') if connected else None,
+        'data_source': scanner_state.tower_data_source,
+        'last_update': (
+            scanner_state.last_update_time.isoformat()
+            if scanner_state.last_update_time else None
+        ),
         'timestamp': datetime.now(timezone.utc).isoformat()
     })
 
@@ -446,9 +403,6 @@ def upload_towers():
     Returns:
         JSON response with success/error status
     """
-    global _real_tower_data, _device_location, _last_update_time
-    global _wifi_networks, _wifi_connected, _wifi_last_update, _wifi_scan_history
-    
     # Validate content type
     if not request.is_json:
         return jsonify({
@@ -476,12 +430,16 @@ def upload_towers():
         from src.services.carrier_lookup import get_carrier_name
         from src.services.tower_location import get_tower_location
         
-        logger.info(f"📡 Processing {len(data['towers'])} tower(s) from device")
+        logger.info("Processing %d tower(s) from device", len(data['towers']))
         
         # Get device location if provided
         device_loc = data.get('device_location')
         if device_loc:
-            logger.info(f"📍 Device location: {device_loc.get('latitude'):.6f}, {device_loc.get('longitude'):.6f}")
+            logger.info(
+                "Device location: %.6f, %.6f",
+                device_loc.get('latitude'),
+                device_loc.get('longitude')
+            )
         
         # Process and enrich tower data
         enriched_towers = []
@@ -492,19 +450,7 @@ def upload_towers():
             
             # Calculate signal bars if not provided
             if 'signal_bars' not in tower and 'signal_strength' in tower:
-                dbm = tower['signal_strength']
-                if dbm >= -85:
-                    tower['signal_bars'] = 5
-                elif dbm >= -95:
-                    tower['signal_bars'] = 4
-                elif dbm >= -105:
-                    tower['signal_bars'] = 3
-                elif dbm >= -115:
-                    tower['signal_bars'] = 2
-                elif dbm >= -125:
-                    tower['signal_bars'] = 1
-                else:
-                    tower['signal_bars'] = 0
+                tower['signal_bars'] = calculate_signal_bars(tower['signal_strength'])
             
             # Get tower location (OpenCelliD lookup with fallback to estimation)
             if 'latitude' not in tower and 'longitude' not in tower:
@@ -517,7 +463,7 @@ def upload_towers():
                 device_lon = device_loc.get('longitude') if device_loc else None
                 signal = tower.get('signal_strength')
                 
-                logger.info(f"🔍 Looking up tower: MCC={mcc}, MNC={mnc}, LAC={lac}, CID={cell_id}")
+                logger.info("Looking up tower: MCC=%s, MNC=%s, LAC=%s, CID=%s", mcc, mnc, lac, cell_id)
                 
                 location_data = get_tower_location(
                     mcc, mnc, lac, cell_id,
@@ -529,9 +475,14 @@ def upload_towers():
                     tower['longitude'] = location_data['longitude']
                     tower['distance_meters'] = location_data['distance_meters']
                     tower['location_source'] = location_data['source']
-                    logger.info(f"✓ Tower coordinates: {location_data['latitude']:.6f}, {location_data['longitude']:.6f} (source: {location_data['source']})")
+                    logger.info(
+                        "Tower coordinates: %.6f, %.6f (source: %s)",
+                        location_data['latitude'],
+                        location_data['longitude'],
+                        location_data['source']
+                    )
                 else:
-                    logger.warning(f"✗ No coordinates found for tower {cell_id}")
+                    logger.warning("No coordinates found for tower %s", cell_id)
             
             # Add timestamp if not provided
             if 'detected_at' not in tower:
@@ -539,59 +490,60 @@ def upload_towers():
             
             enriched_towers.append(tower)
         
-        # Update global storage
-        _real_tower_data = enriched_towers
-        _device_location = data.get('device_location')
-        _last_update_time = datetime.now(timezone.utc)
+        updated_at = datetime.now(timezone.utc)
+        scanner_state.replace_towers(
+            enriched_towers,
+            data.get('device_location'),
+            updated_at
+        )
         
         # Store WiFi network data if provided
         if 'wifi_networks' in data:
-            _wifi_networks = data.get('wifi_networks', [])
-            _wifi_connected = data.get('wifi_connected', None)
-            _wifi_last_update = datetime.now(timezone.utc)
-            logger.info(f"📶 Received {len(_wifi_networks)} WiFi network(s)")
-            
-            # Store scan in history for triangulation if we have location and orientation
+            wifi_networks = data.get('wifi_networks', [])
             device_loc = data.get('device_location', {})
+            scanner_state.replace_wifi(
+                wifi_networks,
+                data.get('wifi_connected', None),
+                device_loc,
+                updated_at
+            )
+            logger.info("Received %d WiFi network(s)", len(wifi_networks))
+
             if device_loc and 'latitude' in device_loc and 'heading' in device_loc:
-                scan_record = {
-                    'timestamp': datetime.now(timezone.utc).isoformat(),
-                    'location': {
-                        'latitude': device_loc.get('latitude'),
-                        'longitude': device_loc.get('longitude'),
-                        'accuracy': device_loc.get('accuracy')
-                    },
-                    'orientation': {
-                        'heading': device_loc.get('heading'),
-                        'pitch': device_loc.get('pitch'),
-                        'roll': device_loc.get('roll'),
-                        'cardinal_direction': device_loc.get('cardinal_direction')
-                    },
-                    'networks': _wifi_networks
-                }
-                
-                # Add to history and limit size
-                _wifi_scan_history.append(scan_record)
-                if len(_wifi_scan_history) > _max_scan_history:
-                    _wifi_scan_history.pop(0)  # Remove oldest
-                
-                logger.info(f"🧭 Stored scan with orientation: {device_loc.get('cardinal_direction')} " +
-                          f"({device_loc.get('heading'):.1f}°) at " +
-                          f"({device_loc.get('latitude'):.6f}, {device_loc.get('longitude'):.6f})")
-                logger.info(f"📊 WiFi scan history: {len(_wifi_scan_history)} scans stored")
+                logger.info(
+                    "Stored scan with orientation: %s (%.1f deg) at (%.6f, %.6f)",
+                    device_loc.get('cardinal_direction'),
+                    device_loc.get('heading'),
+                    device_loc.get('latitude'),
+                    device_loc.get('longitude')
+                )
+                logger.info("WiFi scan history: %d scans stored", len(scanner_state.wifi_scan_history))
+
+        mapping_sample = signal_mapping_service.add_android_snapshot(data, updated_at)
+        if mapping_sample:
+            logger.info(
+                "Stored signal mapping sample %s with %d signal(s)",
+                mapping_sample.get('session_id'),
+                len(mapping_sample.get('signals', []))
+            )
         
         return jsonify({
             'success': True,
-            'message': f'Received {len(enriched_towers)} towers and {len(_wifi_networks)} WiFi networks',
+            'message': (
+                f'Received {len(enriched_towers)} towers and '
+                f'{len(scanner_state.wifi_networks)} WiFi networks'
+            ),
             'towers_received': len(enriched_towers),
-            'wifi_received': len(_wifi_networks),
-            'timestamp': _last_update_time.isoformat()
+            'wifi_received': len(scanner_state.wifi_networks),
+            'mapping_samples': len(signal_mapping_service.samples),
+            'mapping_session_id': signal_mapping_service.active_session_id,
+            'timestamp': scanner_state.last_update_time.isoformat()
         }), 201
         
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to process tower data")
         return jsonify({
             'error': 'Failed to process tower data',
-            'details': str(e),
             'status': 500
         }), 500
 
@@ -618,21 +570,38 @@ def get_wifi():
             'data_source': str ('real' or 'none')
         }
     """
-    global _wifi_networks, _wifi_connected, _wifi_last_update
+    snapshot = scanner_state.wireless_snapshot()
     
     # Get query parameters
     filter_type = request.args.get('filter', None)
-    limit = min(int(request.args.get('limit', 100)), 1000)
+    if filter_type not in [None, 'all', 'open', 'secured', 'connected']:
+        return jsonify({
+            'error': 'Invalid filter parameter',
+            'valid_values': ['all', 'open', 'secured', 'connected']
+        }), 400
+
+    try:
+        limit = int(request.args.get('limit', 100))
+        if limit < 1 or limit > 1000:
+            raise ValueError("Limit out of range")
+    except (ValueError, TypeError):
+        return jsonify({
+            'error': 'Invalid limit parameter',
+            'message': 'Limit must be between 1 and 1000'
+        }), 400
     
     # Return real WiFi data if available
-    if _wifi_networks:
-        networks = _wifi_networks.copy()
+    if snapshot['networks']:
+        networks = snapshot['networks'].copy()
         
         # Apply filters
         if filter_type == 'open':
             networks = [n for n in networks if n.get('is_open', False)]
         elif filter_type == 'secured':
             networks = [n for n in networks if not n.get('is_open', False)]
+        elif filter_type == 'connected':
+            connected_bssid = (snapshot['connected'] or {}).get('bssid')
+            networks = [n for n in networks if n.get('bssid') == connected_bssid]
         
         # Limit results
         networks = networks[:limit]
@@ -640,10 +609,12 @@ def get_wifi():
         return jsonify({
             'networks': networks,
             'count': len(networks),
-            'total_count': len(_wifi_networks),
-            'connected': _wifi_connected,
-            'last_update': _wifi_last_update.isoformat() if _wifi_last_update else None,
-            'data_source': 'real'
+            'total_count': len(snapshot['networks']),
+            'connected': snapshot['connected'],
+            'device_location': snapshot['device_location'],
+            'last_update': snapshot['last_update'],
+            'scan_history_size': snapshot['scan_history_size'],
+            'data_source': snapshot['data_source']
         }), 200
     
     # No WiFi data available
@@ -651,90 +622,124 @@ def get_wifi():
         'networks': [],
         'count': 0,
         'connected': None,
-        'last_update': None,
-        'data_source': 'none',
+        'device_location': snapshot['device_location'],
+        'last_update': snapshot['last_update'],
+        'scan_history_size': snapshot['scan_history_size'],
+        'data_source': snapshot['data_source'],
         'message': 'No WiFi data available - scan from Android app first'
     }), 200
 
 
-@api.route('/wifi/positions', methods=['GET'])
+@api.route('/wireless/latest', methods=['GET'])
 @rate_limit
-def get_wifi_positions():
+def get_latest_wireless_snapshot():
     """
-    Get estimated WiFi AP positions from triangulation.
-    
-    Uses scan history (GPS + orientation + signal) to calculate
-    approximate locations of WiFi access points.
-    
-    Query params:
-        - min_confidence: Minimum confidence score (0-1, default 0.3)
-        - min_scans: Minimum number of scans required (default 2)
-    
-    Returns:
-        JSON with estimated AP positions:
-        {
-            "access_points": {
-                "aa:bb:cc:dd:ee:ff": {
-                    "ssid": "MyWiFi",
-                    "latitude": 53.xxx,
-                    "longitude": -6.xxx,
-                    "confidence": 0.75,
-                    "scan_count": 5,
-                    "accuracy_m": 25
-                }
-            },
-            "count": 12,
-            "scan_history_size": 47
-        }
+    Get the latest scanner state for wireless dashboard visualizations.
+
+    This is the preferred read model for views that need WiFi networks,
+    connected WiFi, device location, and compass orientation together.
     """
-    global _wifi_scan_history
-    
-    # Get query parameters
-    min_confidence = float(request.args.get('min_confidence', 0.3))
-    min_scans = int(request.args.get('min_scans', 2))
-    
-    if not _wifi_scan_history:
-        return jsonify({
-            'access_points': {},
-            'count': 0,
-            'scan_history_size': 0,
-            'message': 'No WiFi scan history - walk around while scanning to collect data'
-        }), 200
-    
-    # Perform triangulation
-    from src.services.wifi_triangulation import analyze_wifi_scan_history
-    
-    logger.info(f"🔍 Analyzing {len(_wifi_scan_history)} WiFi scans for triangulation...")
-    ap_positions = analyze_wifi_scan_history(_wifi_scan_history)
-    
-    # Filter by confidence and scan count
-    filtered_aps = {}
-    for bssid, ap_data in ap_positions.items():
-        pos = ap_data.get('estimated_position', {})
-        if (pos.get('confidence', 0) >= min_confidence and
-            pos.get('scan_count', 0) >= min_scans):
-            
-            filtered_aps[bssid] = {
-                'ssid': ap_data['ssid'],
-                'security': ap_data.get('security', 'Unknown'),
-                'latitude': pos['latitude'],
-                'longitude': pos['longitude'],
-                'confidence': pos['confidence'],
-                'scan_count': pos['scan_count'],
-                'accuracy_m': pos['estimated_accuracy_m'],
-                'first_seen': ap_data.get('first_seen'),
-                'last_seen': ap_data.get('last_seen')
-            }
-    
-    logger.info(f"✓ Found {len(filtered_aps)} WiFi APs with sufficient confidence")
-    
+    snapshot = scanner_state.wireless_snapshot()
     return jsonify({
-        'access_points': filtered_aps,
-        'count': len(filtered_aps),
-        'total_aps_detected': len(ap_positions),
-        'scan_history_size': len(_wifi_scan_history),
-        'min_confidence': min_confidence,
-        'min_scans': min_scans
+        **snapshot,
+        'count': len(snapshot['networks']),
+        'total_count': len(snapshot['networks']),
+        'timestamp': datetime.now(timezone.utc).isoformat()
+    }), 200
+
+
+@api.route('/signal-mapping/session', methods=['POST'])
+@rate_limit
+def start_signal_mapping_session():
+    """Start a fresh walk-and-scan mapping session."""
+    if request.data and not request.is_json:
+        return jsonify({
+            'error': 'Content-Type must be application/json',
+            'status': 400
+        }), 400
+
+    payload = request.get_json(silent=True) or {}
+    session = signal_mapping_service.start_session(payload.get('label'))
+    return jsonify({
+        'success': True,
+        **session
+    }), 201
+
+
+@api.route('/signal-mapping/samples', methods=['GET', 'POST'])
+@rate_limit
+def signal_mapping_samples():
+    """Read or append generic signal mapping samples."""
+    if request.method == 'GET':
+        try:
+            limit = int(request.args.get('limit', 100))
+            if limit < 1 or limit > 1000:
+                raise ValueError("limit out of range")
+        except (ValueError, TypeError):
+            return jsonify({
+                'error': 'Invalid signal mapping parameters',
+                'message': 'limit must be between 1 and 1000'
+            }), 400
+
+        samples = signal_mapping_service.samples[-limit:]
+        return jsonify({
+            'session_id': signal_mapping_service.active_session_id,
+            'samples': samples,
+            'count': len(samples),
+            'total_count': len(signal_mapping_service.samples),
+            'timestamp': datetime.now(timezone.utc).isoformat()
+        }), 200
+
+    if not request.is_json:
+        return jsonify({
+            'error': 'Content-Type must be application/json',
+            'status': 400
+        }), 400
+
+    try:
+        sample = signal_mapping_service.add_sample(request.get_json())
+    except (TypeError, ValueError):
+        return jsonify({
+            'error': 'Invalid signal mapping sample',
+            'message': 'Provide device_pose and at least one valid signal reading'
+        }), 400
+
+    return jsonify({
+        'success': True,
+        'sample': sample,
+        'sample_count': len(signal_mapping_service.samples)
+    }), 201
+
+
+@api.route('/signal-mapping/sources', methods=['GET'])
+@rate_limit
+def signal_mapping_sources():
+    """Return estimated source positions from walk-and-scan samples."""
+    try:
+        signal_type = request.args.get('type')
+        if signal_type in ('', 'all'):
+            signal_type = None
+        if signal_type not in (None, 'wifi', 'bluetooth', 'cellular', 'gnss', 'unknown'):
+            raise ValueError("unsupported signal type")
+
+        min_samples = int(request.args.get('min_samples', 2))
+        min_confidence = float(request.args.get('min_confidence', 0.0))
+        if not (1 <= min_samples <= 100):
+            raise ValueError("min_samples out of range")
+        if not (0 <= min_confidence <= 1):
+            raise ValueError("min_confidence out of range")
+    except (ValueError, TypeError):
+        return jsonify({
+            'error': 'Invalid signal mapping parameters',
+            'message': (
+                'type must be wifi, bluetooth, cellular, gnss, unknown, or all; '
+                'min_samples must be 1-100; min_confidence must be 0-1'
+            )
+        }), 400
+
+    return jsonify({
+        **signal_mapping_service.estimate_sources(signal_type, min_samples, min_confidence),
+        'timestamp': datetime.now(timezone.utc).isoformat()
     }), 200
 
 

@@ -39,7 +39,7 @@ def get_towers_in_area(min_lat, min_lon, max_lat, max_lon, mcc=272):
     """
     
     if not OPENCELLID_TOKEN:
-        logger.warning("❌ OPENCELLID_API_KEY not configured")
+        logger.warning("OPENCELLID_API_KEY not configured")
         return generate_estimated_towers(
             (min_lat + max_lat) / 2,
             (min_lon + max_lon) / 2,
@@ -53,10 +53,10 @@ def get_towers_in_area(min_lat, min_lon, max_lat, max_lon, mcc=272):
     if cache_key in _area_cache:
         cached_data, cached_time = _area_cache[cache_key]
         if datetime.now() - cached_time < _cache_ttl:
-            logger.info(f"📦 Cache hit for area query ({len(cached_data)} towers)")
+            logger.info(f"Cache hit for area query ({len(cached_data)} towers)")
             return cached_data
     
-    logger.info(f"🌍 Fetching towers in BBOX: {min_lat},{min_lon} to {max_lat},{max_lon}")
+    logger.info(f"Fetching towers in BBOX: {min_lat},{min_lon} to {max_lat},{max_lon}")
     
     try:
         # OpenCelliD getInArea endpoint - BBOX format: latmin,lonmin,latmax,lonmax
@@ -73,7 +73,7 @@ def get_towers_in_area(min_lat, min_lon, max_lat, max_lon, mcc=272):
         )
         
         if response.status_code != 200:
-            logger.warning(f"⚠️ OpenCelliD API error {response.status_code}, using estimated towers")
+            logger.warning(f"OpenCelliD API error {response.status_code}, using estimated towers")
             return generate_estimated_towers(
                 (min_lat + max_lat) / 2,
                 (min_lon + max_lon) / 2,
@@ -84,7 +84,7 @@ def get_towers_in_area(min_lat, min_lon, max_lat, max_lon, mcc=272):
         
         # Check for error response
         if isinstance(data, dict) and 'error' in data:
-            logger.warning(f"⚠️ OpenCelliD error: {data.get('error')}, using estimated towers")
+            logger.warning(f"OpenCelliD error: {data.get('error')}, using estimated towers")
             return generate_estimated_towers(
                 (min_lat + max_lat) / 2,
                 (min_lon + max_lon) / 2,
@@ -138,10 +138,10 @@ def get_towers_in_area(min_lat, min_lon, max_lat, max_lon, mcc=272):
                     towers.append(tower)
                     
             except (ValueError, KeyError, TypeError) as e:
-                logger.warning(f"⚠️ Failed to parse cell: {e}")
+                logger.warning(f"Failed to parse cell: {e}")
                 continue
         
-        logger.info(f"✅ Found {len(towers)} towers from OpenCelliD")
+        logger.info(f"Found {len(towers)} towers from OpenCelliD")
         
         # Cache results
         _area_cache[cache_key] = (towers, datetime.now())
@@ -149,21 +149,21 @@ def get_towers_in_area(min_lat, min_lon, max_lat, max_lon, mcc=272):
         return towers
         
     except requests.exceptions.Timeout:
-        logger.warning("⏱️ OpenCelliD API timeout, using estimated towers")
+        logger.warning("OpenCelliD API timeout, using estimated towers")
         return generate_estimated_towers(
             (min_lat + max_lat) / 2,
             (min_lon + max_lon) / 2,
             ((max_lat - min_lat) * 111.0 / 2)
         )
     except requests.exceptions.RequestException as e:
-        logger.warning(f"⚠️ Network error: {e}, using estimated towers")
+        logger.warning(f"Network error: {e}, using estimated towers")
         return generate_estimated_towers(
             (min_lat + max_lat) / 2,
             (min_lon + max_lon) / 2,
             ((max_lat - min_lat) * 111.0 / 2)
         )
     except Exception as e:
-        logger.warning(f"⚠️ Error: {e}, using estimated towers")
+        logger.warning(f"Error: {e}, using estimated towers")
         return generate_estimated_towers(
             (min_lat + max_lat) / 2,
             (min_lon + max_lon) / 2,
@@ -221,7 +221,7 @@ def generate_estimated_towers(latitude, longitude, radius_km):
     import math
     import random
     
-    logger.info(f"📍 Generating estimated towers for {radius_km}km radius")
+    logger.info(f"Generating estimated towers for {radius_km}km radius")
     
     # Estimate tower count based on area and density
     area_km2 = math.pi * (radius_km ** 2)
@@ -280,5 +280,5 @@ def generate_estimated_towers(latitude, longitude, radius_km):
             'carrier': selected_carrier
         })
     
-    logger.info(f"✅ Generated {len(towers)} estimated tower positions")
+    logger.info(f"Generated {len(towers)} estimated tower positions")
     return towers

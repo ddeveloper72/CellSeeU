@@ -69,7 +69,7 @@ public class CellTowerScanner {
                     deviceLocation.getLongitude(), 
                     deviceLocation.getAccuracy()));
             } else {
-                Log.w(TAG, "⚠️ No device location available - tower coordinates cannot be estimated");
+                Log.w(TAG, "No device location available - tower coordinates cannot be estimated");
             }
             
             // Get all cell info

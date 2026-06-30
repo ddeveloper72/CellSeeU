@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
 {% block title %}WiFi Networks - CellSeeU{% endblock %}
 
@@ -6,29 +6,29 @@
 <div class="container">
     <!-- Page header -->
     <header class="page-header">
-        <h1>📶 WiFi Network Detection</h1>
+        <h1>WiFi Network Detection</h1>
         <p class="subtitle">Discover wireless networks around you and identify tracking risks</p>
     </header>
 
     <!-- Stats overview -->
     <section class="stats-grid">
         <div class="stat-card">
-            <div class="stat-icon">📶</div>
+            <div class="stat-icon" aria-hidden="true"></div>
             <div class="stat-value" id="total-networks">-</div>
             <div class="stat-label">Total Networks</div>
         </div>
         <div class="stat-card">
-            <div class="stat-icon">🔒</div>
+            <div class="stat-icon" aria-hidden="true"></div>
             <div class="stat-value" id="secured-count">-</div>
             <div class="stat-label">Secured</div>
         </div>
         <div class="stat-card">
-            <div class="stat-icon">🔓</div>
+            <div class="stat-icon" aria-hidden="true"></div>
             <div class="stat-value" id="open-count">-</div>
             <div class="stat-label">Open</div>
         </div>
         <div class="stat-card">
-            <div class="stat-icon">✅</div>
+            <div class="stat-icon" aria-hidden="true"></div>
             <div class="stat-value" id="connected-network">-</div>
             <div class="stat-label">Connected To</div>
         </div>
@@ -37,18 +37,18 @@
     <!-- Detection Awareness Panel -->
     <section class="section">
         <div id="wifi-tracking-panel" class="tracking-panel">
-            <h3>🔴 Networks That Can Detect Your Device</h3>
+            <h3>Networks That Can Detect Your Device</h3>
             <div class="loading">Analyzing WiFi signals...</div>
         </div>
     </section>
 
-    <!-- Estimated WiFi AP Positions (from triangulation) -->
+    <!-- Estimated WiFi source positions -->
     <section class="section">
-        <h2>📍 Estimated Access Point Locations</h2>
-        <p class="subtitle">Walk around while scanning to triangulate WiFi router positions using orientation sensors
+        <h2>Estimated Access Point Locations</h2>
+        <p class="subtitle">Walk around while scanning to estimate likely WiFi source positions from signal samples
         </p>
         <div id="wifi-positions-info" class="info-box" style="margin-bottom: 1rem;">
-            <em>📊 Analyzing scan history...</em>
+            <em>Analyzing scan history...</em>
         </div>
         <div id="wifi-positions-list" class="tower-grid">
             <div class="loading">No position data yet - walk around and scan from different locations</div>
@@ -57,11 +57,11 @@
 
     <!-- WiFi list -->
     <section class="section">
-        <h2>📶 Detected Networks</h2>
+        <h2>Detected Networks</h2>
         <div class="tower-filters">
             <button class="filter-btn active" data-filter="all">All</button>
-            <button class="filter-btn" data-filter="secured">🔒 Secured</button>
-            <button class="filter-btn" data-filter="open">🔓 Open</button>
+            <button class="filter-btn" data-filter="secured">Secured</button>
+            <button class="filter-btn" data-filter="open">Open</button>
             <button class="filter-btn" data-filter="5ghz">5GHz</button>
             <button class="filter-btn" data-filter="2ghz">2.4GHz</button>
         </div>
@@ -73,10 +73,10 @@
     <!-- Refresh button -->
     <section class="section">
         <button id="btn-refresh-wifi" class="btn btn-primary">
-            🔄 Refresh WiFi List
+            Refresh WiFi List
         </button>
         <p class="subtitle" style="margin-top: 1rem;">
-            <small>💡 WiFi data comes from your Android device. Use the CellSeeU Scanner app to collect WiFi
+            <small>WiFi data comes from your Android device. Use the CellSeeU Scanner app to collect WiFi
                 information.</small>
         </p>
     </section>
@@ -91,10 +91,10 @@
     });
 
     function initializeWiFiPage() {
-        console.log('📶 Initializing WiFi page');
+        console.log('Initializing WiFi page');
 
         fetchWiFiNetworks();
-        fetchWiFiPositions();  // Fetch triangulated positions
+        fetchWiFiPositions();
 
         // Setup refresh button
         const btnRefresh = document.getElementById('btn-refresh-wifi');
@@ -127,14 +127,14 @@
             }
 
             const data = await response.json();
-            console.log(`📶 Found ${data.count} WiFi networks`);
+            console.log(`Found ${data.count} WiFi networks`);
 
             updateWiFiStats(data);
             updateWiFiList(data.networks);
             updateWiFiTracking(data.networks, data.connected);
 
         } catch (error) {
-            console.error('❌ Error fetching WiFi:', error);
+            console.error('Error fetching WiFi:', error);
             showWiFiError('Unable to fetch WiFi data. Make sure Android app is running.');
         }
     }
@@ -173,7 +173,6 @@
             html += `
                 <div class="tower-card">
                     <h3>
-                        ${isOpen ? '🔓' : '🔒'} 
                         ${escapeHtml(network.ssid)}
                         ${isHidden ? '<span style="color: #888;">(Hidden)</span>' : ''}
                     </h3>
@@ -181,7 +180,7 @@
                     <p><strong>Security:</strong> ${network.security}</p>
                     <p><strong>Band:</strong> ${network.band} (Channel ${network.channel})</p>
                     <p><strong>BSSID:</strong> <code style="font-size: 0.85em;">${network.bssid}</code></p>
-                    ${isOpen ? '<p style="color: #ef4444;"><strong>⚠️ Open network - data not encrypted</strong></p>' : ''}
+                    ${isOpen ? '<p style="color: #ef4444;"><strong>Open network - data not encrypted</strong></p>' : ''}
                 </div>
             `;
         });
@@ -194,9 +193,9 @@
         if (!panel) return;
 
         let html = `
-            <h3>🔴 Networks That Can Detect Your Device</h3>
+            <h3>Networks That Can Detect Your Device</h3>
             <div class="tracking-warning">
-                ⚠️ These WiFi networks can see your device's MAC address and location
+                Warning: these WiFi networks can see your device MAC address and location
             </div>
         `;
 
@@ -204,27 +203,27 @@
         if (connected && connected.is_connected) {
             html += `
                 <div class="tracking-item active-connection">
-                    <div class="tracking-badge">🔴 CONNECTED</div>
+                    <div class="tracking-badge">CONNECTED</div>
                     <strong>${escapeHtml(connected.ssid.replace(/"/g, ''))}</strong><br>
                     <small>Signal: ${connected.signal_strength} dBm</small><br>
-                    <small>📍 Definitely tracking: MAC address, location, traffic</small>
+                    <small>Definitely tracking: MAC address, location, traffic</small>
                 </div>
             `;
         }
 
         // All visible networks (can detect probe requests)
         if (networks && networks.length > 0) {
-            html += `<h4>⚠️ Detecting Probe Requests (${networks.length} networks)</h4>`;
+            html += `<h4>Detecting Probe Requests (${networks.length} networks)</h4>`;
             html += `<p><small>All visible networks can see your device scanning for WiFi</small></p>`;
 
             networks.slice(0, 5).forEach(network => {
                 const signalQuality = network.signal_quality || 0;
                 html += `
                     <div class="tracking-item potential-detection">
-                        <div class="tracking-badge">⚠️ IN RANGE</div>
+                        <div class="tracking-badge">IN RANGE</div>
                         <strong>${escapeHtml(network.ssid)}</strong> (${network.security})<br>
                         <small>Signal: ${network.signal_strength} dBm (${signalQuality}%)</small><br>
-                        <small>📡 Can detect WiFi probe requests</small>
+                        <small>Can detect WiFi probe requests</small>
                     </div>
                 `;
             });
@@ -244,22 +243,34 @@
 
     async function fetchWiFiPositions() {
         try {
-            const response = await fetch('/api/wifi/positions?min_confidence=0.3&min_scans=2');
+            const response = await fetch('/api/signal-mapping/sources?type=wifi&min_confidence=0.3&min_samples=2');
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
             }
 
             const data = await response.json();
-            const accessPoints = data.access_points || {};
+            const accessPoints = {};
+            (data.sources || []).forEach(source => {
+                accessPoints[source.source_id] = {
+                    ssid: source.label,
+                    latitude: source.latitude,
+                    longitude: source.longitude,
+                    confidence: source.confidence,
+                    scan_count: source.sample_count,
+                    accuracy_m: source.accuracy_m,
+                    method: source.method,
+                    last_seen: source.last_seen
+                };
+            });
             const count = Object.keys(accessPoints).length;
 
-            console.log(`📍 Found ${count} WiFi APs with estimated positions (${data.scan_history_size} scans)`);
+            console.log(`Found ${count} WiFi source estimates (${data.sample_count} samples)`);
 
             updateWiFiPositionsInfo(data);
             updateWiFiPositionsList(accessPoints);
 
         } catch (error) {
-            console.error('⚠️ Error fetching WiFi positions:', error);
+            console.error('Error fetching WiFi positions:', error);
             document.getElementById('wifi-positions-list').innerHTML =
                 '<div class="loading">Unable to fetch position data</div>';
         }
@@ -269,17 +280,16 @@
         const infoBox = document.getElementById('wifi-positions-info');
         if (!infoBox) return;
 
-        const count = Object.keys(data.access_points || {}).length;
-        const scanCount = data.scan_history_size || 0;
-        const totalAPs = data.total_aps_detected || 0;
+        const count = (data.sources || []).length;
+        const sampleCount = data.sample_count || 0;
 
         let html = '';
-        if (scanCount === 0) {
-            html = '📊 No scan history yet. Walk around while using the Android app to collect orientation data.';
+        if (sampleCount === 0) {
+            html = 'No signal samples yet. Walk around while using the Android app to collect WiFi readings.';
         } else if (count === 0) {
-            html = `📊 Analyzing ${scanCount} scans... Need more scans from different locations to triangulate positions.`;
+            html = `Analyzing ${sampleCount} samples... Need more readings from different locations to estimate source positions.`;
         } else {
-            html = `📊 Successfully triangulated ${count} of ${totalAPs} access points from ${scanCount} scans!`;
+            html = `Estimated ${count} WiFi source positions from ${sampleCount} samples.`;
         }
 
         infoBox.innerHTML = `<em>${html}</em>`;
@@ -311,14 +321,14 @@
 
             html += `
                 <div class="tower-card" style="border-left: 4px solid ${confidenceColor};">
-                    <h3>📍 ${escapeHtml(ap.ssid)}</h3>
+                    <h3>${escapeHtml(ap.ssid)}</h3>
                     <p><strong>Position:</strong> ${ap.latitude.toFixed(6)}, ${ap.longitude.toFixed(6)}</p>
                     <p><strong>Confidence:</strong> <span style="color: ${confidenceColor}; font-weight: bold;">${confidence}%</span></p>
-                    <p><strong>Accuracy:</strong> ±${accuracy}m</p>
+                    <p><strong>Accuracy:</strong> +/-${accuracy}m</p>
                     <p><strong>Scans used:</strong> ${ap.scan_count}</p>
-                    <p><strong>Security:</strong> ${ap.security}</p>
+                    <p><strong>Method:</strong> ${escapeHtml(ap.method || 'weighted_signal_centroid')}</p>
                     <p><strong>BSSID:</strong> <code style="font-size: 0.85em;">${bssid}</code></p>
-                    <p style="margin-top: 0.5rem;"><small><em>💡 View on map for visual location</em></small></p>
+                    <p style="margin-top: 0.5rem;"><small><em>View on map for visual location</em></small></p>
                 </div>
             `;
         });

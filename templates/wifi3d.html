@@ -39,6 +39,94 @@
         color: #4fc3f7;
     }
 
+    .heading-value {
+        color: #ffffff;
+        font-weight: 700;
+    }
+
+    .wifi3d-compass {
+        position: absolute;
+        left: 20px;
+        bottom: 20px;
+        width: 132px;
+        height: 132px;
+        border: 2px solid rgba(79, 195, 247, 0.7);
+        border-radius: 50%;
+        background: rgba(0, 0, 0, 0.78);
+        color: white;
+        font-family: monospace;
+        z-index: 10;
+        box-shadow: 0 0 18px rgba(79, 195, 247, 0.18);
+    }
+
+    .compass-cardinal {
+        position: absolute;
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1;
+    }
+
+    .compass-north {
+        top: 8px;
+        left: 50%;
+        color: #ff5252;
+        transform: translateX(-50%);
+    }
+
+    .compass-east {
+        top: 50%;
+        right: 10px;
+        transform: translateY(-50%);
+    }
+
+    .compass-south {
+        bottom: 8px;
+        left: 50%;
+        transform: translateX(-50%);
+    }
+
+    .compass-west {
+        top: 50%;
+        left: 10px;
+        transform: translateY(-50%);
+    }
+
+    .compass-needle {
+        position: absolute;
+        top: 18px;
+        left: 50%;
+        width: 4px;
+        height: 48px;
+        background: linear-gradient(#ff5252 0 55%, #4fc3f7 55% 100%);
+        border-radius: 3px;
+        transform: translateX(-50%) rotate(0deg);
+        transform-origin: 50% 48px;
+        transition: transform 0.25s ease;
+    }
+
+    .compass-center {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 12px;
+        height: 12px;
+        background: #ffffff;
+        border: 2px solid #4fc3f7;
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+    }
+
+    .compass-readout {
+        position: absolute;
+        top: 72px;
+        left: 50%;
+        width: 86px;
+        text-align: center;
+        color: #d9f4ff;
+        font-size: 11px;
+        transform: translateX(-50%);
+    }
+
     .wifi3d-legend {
         position: absolute;
         bottom: 20px;
@@ -133,13 +221,31 @@
             bottom: 10px;
             right: 10px;
         }
+
+        .wifi3d-compass {
+            left: 10px;
+            bottom: 10px;
+            width: 108px;
+            height: 108px;
+        }
+
+        .compass-needle {
+            top: 14px;
+            height: 40px;
+            transform-origin: 50% 40px;
+        }
+
+        .compass-readout {
+            top: 59px;
+            font-size: 10px;
+        }
     }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="container">
-    <h1 class="page-title">📡 WiFi 3D Visualization</h1>
+    <h1 class="page-title">WiFi 3D Visualization</h1>
     <p class="page-subtitle">Interactive 3D view of WiFi signals around you</p>
 
     <div id="wifi3d-container">
@@ -150,18 +256,28 @@
         <canvas id="wifi3d-canvas"></canvas>
 
         <div class="wifi3d-info">
-            <h3>🧭 Your Device</h3>
-            <div id="device-heading">Heading: --°</div>
+            <h3>Your Device</h3>
+            <div>Compass heading: <span id="device-heading" class="heading-value">-- deg</span></div>
             <div id="device-location">Location: --</div>
             <div id="networks-count">Networks: 0</div>
             <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.2);">
-                <small>💡 Drag to rotate • Scroll to zoom • Click network for details</small>
+                <small>Drag to rotate - Scroll to zoom - Click network for details</small>
             </div>
+        </div>
+
+        <div class="wifi3d-compass" aria-label="Phone compass heading">
+            <div class="compass-cardinal compass-north">N</div>
+            <div class="compass-cardinal compass-east">E</div>
+            <div class="compass-cardinal compass-south">S</div>
+            <div class="compass-cardinal compass-west">W</div>
+            <div id="compass-needle" class="compass-needle"></div>
+            <div class="compass-center"></div>
+            <div id="compass-readout" class="compass-readout">Waiting for heading</div>
         </div>
 
         <div class="wifi3d-controls">
             <button id="btn-reset-view">Reset View</button>
-            <button id="btn-auto-rotate">Auto Rotate: OFF</button>
+            <button id="btn-auto-rotate">Camera Orbit: OFF</button>
             <button id="btn-show-labels">Labels: ON</button>
             <button id="btn-refresh">Refresh Data</button>
         </div>
@@ -211,11 +327,29 @@
 
     // Global variables
     let scene, camera, renderer, labelRenderer, controls;
-    let deviceMarker, compassRing;
+    let deviceMarker, compassRing, headingArrow;
     let wifiNetworks = [];
     let networkObjects = [];
     let autoRotate = false;
     let showLabels = true;
+    let currentDeviceHeading = null;
+
+    function normalizeHeading(heading) {
+        const numericHeading = Number(heading);
+        if (!Number.isFinite(numericHeading)) {
+            return null;
+        }
+        return ((numericHeading % 360) + 360) % 360;
+    }
+
+    function getCardinalDirection(heading) {
+        if (heading === null) {
+            return '';
+        }
+
+        const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+        return directions[Math.round(heading / 45) % directions.length];
+    }
 
     // Initialize 3D scene
     function init3DScene() {
@@ -318,6 +452,11 @@
         const antenna = new THREE.Mesh(antennaGeometry, antennaMaterial);
         antenna.position.y = 2.5;
         deviceMarker.add(antenna);
+
+        // Direction arrow showing which way the phone is facing.
+        const direction = new THREE.Vector3(0, 0, 1);
+        headingArrow = new THREE.ArrowHelper(direction, new THREE.Vector3(0, 2.8, 0), 16, 0xff5252, 4, 2);
+        scene.add(headingArrow);
     }
 
     function createCompassRing() {
@@ -426,6 +565,16 @@
         return maxDistance - (normalized * (maxDistance - minDistance));
     }
 
+    function stableNetworkOffset(network) {
+        const key = network.bssid || network.ssid || '';
+        let hash = 0;
+        for (let i = 0; i < key.length; i++) {
+            hash = ((hash << 5) - hash) + key.charCodeAt(i);
+            hash |= 0;
+        }
+        return Math.abs(hash % 1000) / 1000;
+    }
+
     function updateWiFiNetworks(networks, deviceHeading = 0) {
         // Clear existing network objects
         networkObjects.forEach(obj => {
@@ -440,19 +589,25 @@
             return;
         }
 
+        const heading = normalizeHeading(deviceHeading) || 0;
+        const sortedNetworks = [...networks].sort((a, b) =>
+            (b.signal_strength || -100) - (a.signal_strength || -100)
+        );
+
         // Update count
-        document.getElementById('networks-count').textContent = `Networks: ${networks.length}`;
+        document.getElementById('networks-count').textContent = `Networks: ${sortedNetworks.length}`;
 
         // Create 3D objects for each network
-        networks.forEach((network, index) => {
+        sortedNetworks.forEach((network, index) => {
             const rssi = network.signal_strength || -70;
             const distance = calculateDistance(rssi);
             const color = getSignalColor(rssi);
 
-            // Distribute networks in 3D space
-            // Use a spherical distribution with some randomization
-            const angleHorizontal = (index / networks.length) * Math.PI * 2;
-            const angleVertical = (Math.random() - 0.5) * Math.PI * 0.6; // ±54 degrees from horizontal
+            // Match the Android 3D view: distribute networks around the compass
+            // and keep positions stable across refreshes.
+            const bearing = (heading + (360 * index / sortedNetworks.length)) % 360;
+            const angleHorizontal = THREE.MathUtils.degToRad(bearing);
+            const angleVertical = (stableNetworkOffset(network) - 0.5) * Math.PI * 0.45;
 
             const x = Math.cos(angleHorizontal) * Math.cos(angleVertical) * distance;
             const y = Math.sin(angleVertical) * distance;
@@ -508,16 +663,46 @@
         });
     }
 
+    function updateCompassHeading(heading, cardinalDirection = '') {
+        const normalizedHeading = normalizeHeading(heading);
+        currentDeviceHeading = normalizedHeading;
+
+        const headingElement = document.getElementById('device-heading');
+        const needleElement = document.getElementById('compass-needle');
+        const readoutElement = document.getElementById('compass-readout');
+
+        if (normalizedHeading === null) {
+            headingElement.textContent = '-- deg';
+            readoutElement.textContent = 'Waiting for heading';
+            if (headingArrow) {
+                headingArrow.visible = false;
+            }
+            return;
+        }
+
+        const directionLabel = cardinalDirection || getCardinalDirection(normalizedHeading);
+        const headingText = `${normalizedHeading.toFixed(1)} deg ${directionLabel}`.trim();
+
+        headingElement.textContent = headingText;
+        readoutElement.textContent = headingText;
+        needleElement.style.transform = `translateX(-50%) rotate(${normalizedHeading}deg)`;
+
+        if (headingArrow) {
+            const headingRadians = THREE.MathUtils.degToRad(normalizedHeading);
+            headingArrow.setDirection(new THREE.Vector3(
+                Math.sin(headingRadians),
+                0,
+                Math.cos(headingRadians)
+            ).normalize());
+            headingArrow.visible = true;
+        }
+    }
+
     function animate() {
         requestAnimationFrame(animate);
 
         // Update controls
         controls.update();
-
-        // Auto-rotate if enabled
-        if (autoRotate) {
-            scene.rotation.y += 0.001;
-        }
 
         // Animate device glow
         if (deviceMarker && deviceMarker.children[0]) {
@@ -541,7 +726,10 @@
     // Fetch WiFi data from API
     async function fetchWiFiData() {
         try {
-            const response = await fetch('/api/wifi');
+            const response = await fetch('/api/wireless/latest');
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
             const data = await response.json();
 
             wifiNetworks = data.networks || [];
@@ -549,13 +737,13 @@
             // Update device info
             if (data.device_location) {
                 const loc = data.device_location;
-                document.getElementById('device-heading').textContent =
-                    `Heading: ${loc.heading?.toFixed(1) || '--'}° ${loc.cardinal_direction || ''}`;
+                updateCompassHeading(loc.heading, loc.cardinal_direction);
                 document.getElementById('device-location').textContent =
                     `Location: ${loc.latitude?.toFixed(4)}, ${loc.longitude?.toFixed(4)}`;
 
                 updateWiFiNetworks(wifiNetworks, loc.heading || 0);
             } else {
+                updateCompassHeading(null);
                 updateWiFiNetworks(wifiNetworks);
             }
         } catch (error) {
@@ -565,13 +753,15 @@
 
     // Button event listeners
     document.getElementById('btn-reset-view').addEventListener('click', () => {
+        scene.rotation.set(0, 0, 0);
         camera.position.set(0, 30, 50);
         controls.reset();
     });
 
     document.getElementById('btn-auto-rotate').addEventListener('click', (e) => {
         autoRotate = !autoRotate;
-        e.target.textContent = `Auto Rotate: ${autoRotate ? 'ON' : 'OFF'}`;
+        controls.autoRotate = autoRotate;
+        e.target.textContent = `Camera Orbit: ${autoRotate ? 'ON' : 'OFF'}`;
     });
 
     document.getElementById('btn-show-labels').addEventListener('click', (e) => {

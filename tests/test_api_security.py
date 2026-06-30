@@ -341,6 +341,327 @@ class TestAPIFunctionalityNotBrokenBySecurity:
         for field in required_fields:
             assert field in data, f"Missing stat field: {field}"
 
+    def test_uploaded_tower_details_are_available(self, client, monkeypatch):
+        """Verify tower detail lookups use scanner-uploaded tower data."""
+        monkeypatch.setattr(
+            'src.services.tower_location.get_tower_location',
+            lambda *args, **kwargs: {'latitude': None, 'longitude': None}
+        )
+
+        upload = {
+            'device_location': {
+                'latitude': 53.3498,
+                'longitude': -6.2603,
+                'accuracy': 12
+            },
+            'towers': [
+                {
+                    'cell_id': 12345678,
+                    'mcc': 272,
+                    'mnc': 1,
+                    'network_type': 'LTE',
+                    'signal_strength': -90,
+                    'registered': True,
+                    'tower_type': 'TERRESTRIAL'
+                }
+            ]
+        }
+
+        upload_response = client.post('/api/towers/upload', json=upload)
+        assert upload_response.status_code == 201
+
+        detail_response = client.get('/api/tower/12345678')
+        assert detail_response.status_code == 200
+
+        data = detail_response.get_json()
+        assert data['data_source'] == 'real'
+        assert data['tower']['carrier'] == 'Vodafone Ireland'
+        assert data['tower']['signal_bars'] == 4
+
+    def test_stats_reflect_uploaded_towers(self, client, monkeypatch):
+        """Verify aggregate stats are calculated from uploaded scanner data."""
+        monkeypatch.setattr(
+            'src.services.tower_location.get_tower_location',
+            lambda *args, **kwargs: {'latitude': None, 'longitude': None}
+        )
+
+        client.post('/api/towers/upload', json={
+            'towers': [
+                {
+                    'cell_id': 111,
+                    'mcc': 272,
+                    'mnc': 1,
+                    'network_type': 'LTE',
+                    'signal_strength': -80,
+                    'registered': True,
+                    'tower_type': 'TERRESTRIAL'
+                },
+                {
+                    'cell_id': 222,
+                    'mcc': 901,
+                    'mnc': 88,
+                    'network_type': '5G_NR_NTN',
+                    'signal_strength': -100,
+                    'registered': False,
+                    'tower_type': 'NON_TERRESTRIAL_SATELLITE'
+                }
+            ]
+        })
+
+        response = client.get('/api/stats')
+        assert response.status_code == 200
+
+        data = response.get_json()
+        assert data['total_towers'] == 2
+        assert data['terrestrial_count'] == 1
+        assert data['satellite_count'] == 1
+        assert data['average_signal'] == -90
+        assert data['connected_network'] == 'LTE'
+        assert data['connected_carrier'] == 'Vodafone Ireland'
+        assert data['data_source'] == 'real'
+
+    def test_wifi_endpoint_rejects_invalid_query_params(self, client):
+        """Verify malformed WiFi query params return controlled 400s."""
+        bad_responses = [
+            client.get('/api/wifi?limit=abc'),
+            client.get('/api/wifi?limit=0'),
+            client.get('/api/wifi?filter=<script>'),
+        ]
+
+        for response in bad_responses:
+            assert response.status_code == 400
+            assert response.is_json
+
+    def test_legacy_wifi_positions_endpoint_removed(self, client):
+        """Verify WiFi source estimates are served by signal mapping only."""
+        response = client.get('/api/wifi/positions')
+
+        assert response.status_code == 404
+        assert response.is_json
+
+    def test_wifi_endpoint_returns_device_heading(self, client, monkeypatch):
+        """Verify WiFi 3D can read the latest uploaded phone heading."""
+        monkeypatch.setattr(
+            'src.services.tower_location.get_tower_location',
+            lambda *args, **kwargs: {'latitude': None, 'longitude': None}
+        )
+
+        client.post('/api/towers/upload', json={
+            'device_location': {
+                'latitude': 53.3498,
+                'longitude': -6.2603,
+                'heading': 287.5,
+                'cardinal_direction': 'WNW'
+            },
+            'towers': [],
+            'wifi_networks': [
+                {
+                    'ssid': 'Test WiFi',
+                    'bssid': 'aa:bb:cc:dd:ee:ff',
+                    'signal_strength': -55,
+                    'is_open': False
+                }
+            ]
+        })
+
+        response = client.get('/api/wifi')
+        assert response.status_code == 200
+
+        data = response.get_json()
+        assert data['device_location']['heading'] == 287.5
+        assert data['device_location']['cardinal_direction'] == 'WNW'
+
+    def test_wireless_snapshot_returns_latest_android_scanner_state(self, client, monkeypatch):
+        """Verify 3D/dashboard views can share one normalized wireless state."""
+        monkeypatch.setattr(
+            'src.services.tower_location.get_tower_location',
+            lambda *args, **kwargs: {'latitude': None, 'longitude': None}
+        )
+
+        client.post('/api/towers/upload', json={
+            'device_location': {
+                'latitude': 53.3498,
+                'longitude': -6.2603,
+                'heading': 45.0,
+                'cardinal_direction': 'NE'
+            },
+            'towers': [],
+            'wifi_connected': {
+                'ssid': 'Connected WiFi',
+                'bssid': '11:22:33:44:55:66',
+                'is_connected': True,
+                'signal_strength': -50
+            },
+            'wifi_networks': [
+                {
+                    'ssid': 'Connected WiFi',
+                    'bssid': '11:22:33:44:55:66',
+                    'signal_strength': -50,
+                    'is_open': False
+                },
+                {
+                    'ssid': 'Nearby WiFi',
+                    'bssid': 'aa:bb:cc:dd:ee:ff',
+                    'signal_strength': -70,
+                    'is_open': True
+                }
+            ]
+        })
+
+        response = client.get('/api/wireless/latest')
+        assert response.status_code == 200
+
+        data = response.get_json()
+        assert data['count'] == 2
+        assert data['total_count'] == 2
+        assert data['data_source'] == 'real'
+        assert data['device_location']['heading'] == 45.0
+        assert data['connected']['bssid'] == '11:22:33:44:55:66'
+        assert data['networks'][0]['ssid'] == 'Connected WiFi'
+
+    def test_wireless_snapshot_falls_back_to_recent_non_empty_wifi_scan(self, client, monkeypatch):
+        """Verify an empty WiFi scan does not blank the 3D signal view."""
+        monkeypatch.setattr(
+            'src.services.tower_location.get_tower_location',
+            lambda *args, **kwargs: {'latitude': None, 'longitude': None}
+        )
+
+        client.post('/api/towers/upload', json={
+            'device_location': {
+                'latitude': 53.3498,
+                'longitude': -6.2603,
+                'heading': 10.0,
+                'cardinal_direction': 'N'
+            },
+            'towers': [],
+            'wifi_networks': [
+                {
+                    'ssid': 'Previous WiFi',
+                    'bssid': 'aa:bb:cc:dd:ee:ff',
+                    'signal_strength': -61,
+                    'is_open': False
+                }
+            ]
+        })
+        client.post('/api/towers/upload', json={
+            'device_location': {
+                'latitude': 53.3499,
+                'longitude': -6.2604,
+                'heading': 180.0,
+                'cardinal_direction': 'S'
+            },
+            'towers': [],
+            'wifi_networks': []
+        })
+
+        response = client.get('/api/wireless/latest')
+        assert response.status_code == 200
+
+        data = response.get_json()
+        assert data['data_source'] == 'history'
+        assert data['count'] == 1
+        assert data['networks'][0]['ssid'] == 'Previous WiFi'
+        assert data['device_location']['heading'] == 180.0
+
+    def test_android_upload_feeds_signal_mapping_samples(self, client, monkeypatch):
+        """Verify existing scanner uploads seed the generic signal mapper."""
+        monkeypatch.setattr(
+            'src.services.tower_location.get_tower_location',
+            lambda *args, **kwargs: {'latitude': None, 'longitude': None}
+        )
+
+        response = client.post('/api/towers/upload', json={
+            'device_location': {
+                'latitude': 53.3498,
+                'longitude': -6.2603,
+                'accuracy': 8,
+                'heading': 240.0,
+                'cardinal_direction': 'SW'
+            },
+            'towers': [],
+            'wifi_networks': [
+                {
+                    'ssid': 'Kitchen AP',
+                    'bssid': 'aa:bb:cc:dd:ee:ff',
+                    'signal_strength': -52,
+                    'frequency': 2412,
+                    'channel': 1
+                }
+            ]
+        })
+
+        assert response.status_code == 201
+        upload_data = response.get_json()
+        assert upload_data['mapping_samples'] == 1
+        assert 'mapping_session_id' in upload_data
+
+        samples_response = client.get('/api/signal-mapping/samples')
+        assert samples_response.status_code == 200
+
+        samples_data = samples_response.get_json()
+        assert samples_data['count'] == 1
+        assert samples_data['samples'][0]['signals'][0]['type'] == 'wifi'
+        assert samples_data['samples'][0]['signals'][0]['source_id'] == 'aa:bb:cc:dd:ee:ff'
+
+    def test_signal_mapping_sources_estimate_wifi_position(self, client):
+        """Verify walk samples produce a conservative source estimate."""
+        samples = [
+            (53.34980, -6.26030, -72),
+            (53.34984, -6.26020, -55),
+            (53.34988, -6.26010, -47),
+        ]
+        for lat, lon, signal in samples:
+            response = client.post('/api/signal-mapping/samples', json={
+                'device_pose': {
+                    'latitude': lat,
+                    'longitude': lon,
+                    'accuracy_m': 5,
+                    'heading': 240
+                },
+                'signals': [
+                    {
+                        'type': 'wifi',
+                        'source_id': 'aa:bb:cc:dd:ee:ff',
+                        'label': 'Kitchen AP',
+                        'strength_dbm': signal,
+                        'frequency_mhz': 2412
+                    }
+                ]
+            })
+            assert response.status_code == 201
+
+        response = client.get('/api/signal-mapping/sources?type=wifi&min_samples=2')
+        assert response.status_code == 200
+
+        data = response.get_json()
+        assert data['count'] == 1
+        source = data['sources'][0]
+        assert source['type'] == 'wifi'
+        assert source['source_id'] == 'aa:bb:cc:dd:ee:ff'
+        assert source['label'] == 'Kitchen AP'
+        assert source['sample_count'] == 3
+        assert source['method'] == 'weighted_signal_centroid'
+        assert source['latitude'] > 53.34982
+        assert source['longitude'] > -6.26025
+
+    def test_signal_mapping_rejects_invalid_inputs(self, client):
+        """Verify signal mapping endpoints validate public inputs."""
+        bad_responses = [
+            client.post('/api/signal-mapping/samples', json={'device_pose': {}, 'signals': []}),
+            client.post('/api/signal-mapping/samples', json={
+                'device_pose': {},
+                'signals': [{'type': 'not-real', 'source_id': 'x'}]
+            }),
+            client.get('/api/signal-mapping/samples?limit=0'),
+            client.get('/api/signal-mapping/sources?type=<script>'),
+            client.get('/api/signal-mapping/sources?min_samples=0'),
+            client.get('/api/signal-mapping/sources?min_confidence=2'),
+        ]
+
+        for response in bad_responses:
+            assert response.status_code == 400
+            assert response.is_json
+
 
 class TestAPIPerformanceSecurity:
     """Test that API doesn't have performance-based vulnerabilities"""

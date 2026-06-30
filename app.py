@@ -1,4 +1,4 @@
-"""
+﻿"""
 CellSeeU Flask Application
 
 Main entry point for the web dashboard. Implements security best practices
@@ -221,10 +221,10 @@ if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
     debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
     
-    print(f"🗼 CellSeeU starting on port {port}")
-    print(f"📱 Dashboard: http://localhost:{port}")
-    print(f"🗺️  Map view: http://localhost:{port}/map")
-    print(f"🔒 Security headers: {'ENABLED' if app.config['ENV'] == 'production' else 'DEVELOPMENT MODE'}")
+    print(f"CellSeeU starting on port {port}")
+    print(f"Dashboard: http://localhost:{port}")
+    print(f"Map view: http://localhost:{port}/map")
+    print(f"Security headers: {'ENABLED' if app.config['ENV'] == 'production' else 'DEVELOPMENT MODE'}")
     
     app.run(
         host='0.0.0.0',

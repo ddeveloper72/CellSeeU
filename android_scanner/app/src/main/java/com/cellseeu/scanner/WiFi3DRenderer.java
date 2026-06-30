@@ -80,7 +80,7 @@ public class WiFi3DRenderer implements GLSurfaceView.Renderer {
         gridFloor = new Grid(40f, 20);
         compassRing = new CompassRing(8f, 0.2f, 64);
         
-        Log.i(TAG, "✅ OpenGL initialized successfully");
+        Log.i(TAG, "OpenGL initialized successfully");
     }
     
     @Override
@@ -122,9 +122,17 @@ public class WiFi3DRenderer implements GLSurfaceView.Renderer {
         
         // Draw compass ring
         Matrix.setIdentityM(modelMatrix, 0);
-        Matrix.rotateM(modelMatrix, 0, -deviceHeading, 0f, 1f, 0f);
         drawObject(compassRing.getVertexBuffer(), compassRing.getVertexCount(),
                   new float[]{0.3f, 0.7f, 1.0f, 0.4f}, GLES20.GL_LINE_LOOP);
+
+        // Draw fixed cardinal markers around the compass ring.
+        drawCompassMarker(0f, new float[]{1.0f, 0.15f, 0.15f, 1.0f});
+        drawCompassMarker(90f, new float[]{0.0f, 1.0f, 0.0f, 1.0f});
+        drawCompassMarker(180f, new float[]{1.0f, 1.0f, 1.0f, 1.0f});
+        drawCompassMarker(270f, new float[]{0.0f, 1.0f, 1.0f, 1.0f});
+
+        // Draw device heading as a red arrow from the device.
+        drawHeadingArrow();
         
         // Draw device sphere (you) at center
         Matrix.setIdentityM(modelMatrix, 0);
@@ -173,6 +181,42 @@ public class WiFi3DRenderer implements GLSurfaceView.Renderer {
         
         // Note: Connector lines now drawn in 2D screen space (WiFi3DActivity)
         // 3D lines removed - they can't properly connect to 2D labels due to coordinate system mismatch
+    }
+
+    private void drawCompassMarker(float bearing, float[] color) {
+        float bearingRad = (float) Math.toRadians(bearing);
+        float x = 9.5f * (float) Math.sin(bearingRad);
+        float z = 9.5f * (float) Math.cos(bearingRad);
+
+        Matrix.setIdentityM(modelMatrix, 0);
+        Matrix.translateM(modelMatrix, 0, x, 0f, z);
+        Matrix.scaleM(modelMatrix, 0, 0.55f, 0.55f, 0.55f);
+        drawObject(networkSphere.getVertexBuffer(), networkSphere.getVertexCount(),
+                color, GLES20.GL_TRIANGLE_FAN);
+    }
+
+    private void drawHeadingArrow() {
+        float headingRad = (float) Math.toRadians(deviceHeading);
+        float endX = 7.0f * (float) Math.sin(headingRad);
+        float endZ = 7.0f * (float) Math.cos(headingRad);
+
+        float[] arrowVertices = {
+                0f, 0.15f, 0f,
+                endX, 0.15f, endZ
+        };
+
+        FloatBuffer arrowBuffer = ByteBuffer.allocateDirect(arrowVertices.length * 4)
+                .order(ByteOrder.nativeOrder()).asFloatBuffer();
+        arrowBuffer.put(arrowVertices).position(0);
+
+        Matrix.setIdentityM(modelMatrix, 0);
+        drawObject(arrowBuffer, 2, new float[]{1.0f, 0.25f, 0.25f, 1.0f}, GLES20.GL_LINES);
+
+        Matrix.setIdentityM(modelMatrix, 0);
+        Matrix.translateM(modelMatrix, 0, endX, 0.15f, endZ);
+        Matrix.scaleM(modelMatrix, 0, 0.75f, 0.75f, 0.75f);
+        drawObject(networkSphere.getVertexBuffer(), networkSphere.getVertexCount(),
+                new float[]{1.0f, 0.25f, 0.25f, 1.0f}, GLES20.GL_TRIANGLE_FAN);
     }
     
     private void drawObject(FloatBuffer vertexBuffer, int vertexCount, float[] color, int drawMode) {

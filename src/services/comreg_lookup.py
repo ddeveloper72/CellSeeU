@@ -4,7 +4,7 @@ ComReg (Irish Telecom Regulator) Tower Location Lookup
 ComReg maintains the official registry of all mobile phone masts in Ireland.
 This service queries their Site Viewer API for accurate tower coordinates.
 
-⚠️ NOTE: The API endpoints below are placeholders and need to be discovered.
+NOTE: The API endpoints below are placeholders and need to be discovered.
 
 To find the real ComReg API endpoints:
 1. Open https://siteviewer.comreg.ie/#/mobile-masts in Chrome
@@ -29,7 +29,7 @@ import json
 logger = logging.getLogger(__name__)
 
 # ComReg Site Viewer API endpoints
-# ⚠️ TODO: Discover actual endpoints from network inspector
+# TODO: Discover actual endpoints from network inspector
 COMREG_API_BASE = "https://siteviewer.comreg.ie/api"
 COMREG_SEARCH_ENDPOINT = f"{COMREG_API_BASE}/sites/search"
 COMREG_SITE_ENDPOINT = f"{COMREG_API_BASE}/sites"
@@ -75,7 +75,7 @@ class ComRegLookupService:
             if response.status_code == 200:
                 data = response.json()
                 towers = data.get('sites', [])
-                logger.info(f"✓ Found {len(towers)} towers in ComReg database")
+                logger.info("Found %d towers in ComReg database", len(towers))
                 return towers
             else:
                 logger.error(f"ComReg API error: {response.status_code}")
@@ -165,7 +165,7 @@ class ComRegLookupService:
         
         if tower_lat and tower_lon:
             logger.info(
-                f"✓ Matched tower: {closest_tower.get('site_id')} "
+                f"Matched tower: {closest_tower.get('site_id')} "
                 f"({operator}) at {tower_lat:.6f}, {tower_lon:.6f}"
             )
             return (tower_lat, tower_lon, closest_tower)

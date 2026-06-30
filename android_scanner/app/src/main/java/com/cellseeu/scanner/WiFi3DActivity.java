@@ -1,7 +1,11 @@
 package com.cellseeu.scanner;
 
 import android.Manifest;
+import android.content.res.Configuration;
 import android.content.pm.PackageManager;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
 import android.opengl.GLSurfaceView;
 import android.os.Bundle;
 import android.os.Handler;
@@ -11,12 +15,9 @@ import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
 import android.view.View;
-import android.widget.AdapterView;
-import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
-import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.widget.ToggleButton;
@@ -51,11 +52,11 @@ public class WiFi3DActivity extends AppCompatActivity {
     private TextView statusText;
     private TextView networkCountText;
     private TextView compassText;
+    private CompassDialView compassDialView;
     private Button refreshButton;
     
     // Label controls
     private ToggleButton labelToggle;
-    private Spinner labelModeSpinner;
     private ToggleButton band24Toggle;
     private ToggleButton band5Toggle;
     private FrameLayout labelOverlay;
@@ -69,6 +70,8 @@ public class WiFi3DActivity extends AppCompatActivity {
     private OrientationSensor orientationSensor;
     
     private Handler scanHandler = new Handler(Looper.getMainLooper());
+    private Handler compassHandler = new Handler(Looper.getMainLooper());
+    private Runnable compassUpdateRunnable;
     private boolean isScanning = false;
     
     // Touch gesture handling
@@ -82,22 +85,10 @@ public class WiFi3DActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
-        // Create layout programmatically with FrameLayout for overlays
+        // Full-screen 3D scene with overlays, matching the browser WiFi 3D view.
         FrameLayout rootLayout = new FrameLayout(this);
         rootLayout.setBackgroundColor(0xFF0a0a1a);
-        
-        // Main vertical layout
-        LinearLayout mainLayout = new LinearLayout(this);
-        mainLayout.setOrientation(LinearLayout.VERTICAL);
-        mainLayout.setLayoutParams(new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT
-        ));
-        
-        // Info panel at top
-        LinearLayout infoPanel = createInfoPanel();
-        mainLayout.addView(infoPanel);
-        
+
         // GLSurfaceView for 3D rendering
         glSurfaceView = new GLSurfaceView(this);
         glSurfaceView.setEGLContextClientVersion(2); // OpenGL ES 2.0
@@ -105,21 +96,30 @@ public class WiFi3DActivity extends AppCompatActivity {
         renderer = new WiFi3DRenderer();
         glSurfaceView.setRenderer(renderer);
         glSurfaceView.setRenderMode(GLSurfaceView.RENDERMODE_CONTINUOUSLY);
-        
-        LinearLayout.LayoutParams glParams = new LinearLayout.LayoutParams(
+
+        rootLayout.addView(glSurfaceView, new FrameLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                0,
-                1.0f // Weight 1 for remaining space
+                LinearLayout.LayoutParams.MATCH_PARENT
+        ));
+
+        boolean isLandscape = getResources().getConfiguration().orientation
+                == Configuration.ORIENTATION_LANDSCAPE;
+
+        rootLayout.addView(createInfoPanel(), topLeftParams(18, 18, 380));
+        rootLayout.addView(
+                createCollapsiblePanel("Controls", createControlPanel(), isLandscape),
+                topRightParams(18, 18, 230)
         );
-        glSurfaceView.setLayoutParams(glParams);
-        mainLayout.addView(glSurfaceView);
-        
-        // Control panel at bottom
-        LinearLayout controlPanel = createControlPanel();
-        mainLayout.addView(controlPanel);
-        
-        // Add main layout to root
-        rootLayout.addView(mainLayout);
+        rootLayout.addView(
+                createCollapsiblePanel("Legend", createLegendPanel(), isLandscape),
+                bottomRightParams(18, 18, 300)
+        );
+
+        compassDialView = new CompassDialView(this);
+        rootLayout.addView(compassDialView, bottomLeftParams(18, 18, 170, 170));
+
+        TextView helpText = createOverlayText("Drag to rotate - pinch to zoom");
+        rootLayout.addView(helpText, bottomCenterParams(260, 18));
         
         // Add label overlay (on top of everything)
         labelOverlay = new FrameLayout(this);
@@ -127,6 +127,7 @@ public class WiFi3DActivity extends AppCompatActivity {
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
         ));
+        labelOverlay.setClickable(false);
         rootLayout.addView(labelOverlay);
         
         setContentView(rootLayout);
@@ -137,7 +138,7 @@ public class WiFi3DActivity extends AppCompatActivity {
         
         if (orientationSensor.sensorsAvailable()) {
             orientationSensor.start();
-            Log.i(TAG, "🧭 Orientation sensors started");
+            Log.i(TAG, "Orientation sensors started");
         } else {
             Toast.makeText(this, "Compass not available", Toast.LENGTH_SHORT).show();
         }
@@ -154,57 +155,51 @@ public class WiFi3DActivity extends AppCompatActivity {
     private LinearLayout createInfoPanel() {
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setPadding(30, 30, 30, 20);
+        panel.setPadding(18, 18, 18, 18);
         panel.setBackgroundColor(0xCC000000);
-        
-        // Title
+
         TextView title = new TextView(this);
-        title.setText("📡 WiFi 3D View");
+        title.setText("Your Device");
         title.setTextColor(0xFF4fc3f7);
-        title.setTextSize(24);
-        title.setPadding(0, 0, 0, 15);
+        title.setTextSize(18);
+        title.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        title.setPadding(0, 0, 0, 12);
         panel.addView(title);
-        
-        // Network count
-        networkCountText = new TextView(this);
-        networkCountText.setText("Networks: 0");
-        networkCountText.setTextColor(0xFFFFFFFF);
-        networkCountText.setTextSize(14);
-        panel.addView(networkCountText);
-        
-        // Compass heading
-        compassText = new TextView(this);
-        compassText.setText("Heading: --°");
-        compassText.setTextColor(0xFFFFFFFF);
-        compassText.setTextSize(14);
+
+        compassText = createOverlayText("Compass heading: -- deg");
         panel.addView(compassText);
-        
-        // Status
-        statusText = new TextView(this);
-        statusText.setText("Initializing...");
+
+        networkCountText = createOverlayText("Networks: 0");
+        networkCountText.setPadding(0, 7, 0, 0);
+        panel.addView(networkCountText);
+
+        statusText = createOverlayText("Initializing...");
         statusText.setTextColor(0xFFaaaaaa);
         statusText.setTextSize(12);
         statusText.setPadding(0, 10, 0, 0);
         panel.addView(statusText);
-        
+
         return panel;
     }
-    
+
     private LinearLayout createControlPanel() {
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setPadding(15, 10, 15, 10);
+        panel.setPadding(12, 12, 12, 12);
         panel.setBackgroundColor(0xCC000000);
-        
-        // First row: Label controls
-        LinearLayout labelRow = new LinearLayout(this);
-        labelRow.setOrientation(LinearLayout.HORIZONTAL);
-        labelRow.setPadding(5, 5, 5, 5);
-        
-        // Label toggle
+
+        Button resetButton = createOverlayButton("Reset View", 0xFF4fc3f7);
+        resetButton.setOnClickListener(v -> {
+            cameraAngleX = 30f;
+            cameraAngleY = 0f;
+            cameraDistance = 25f;
+            renderer.updateCamera(cameraAngleX, cameraAngleY, cameraDistance);
+        });
+        panel.addView(resetButton, overlayButtonParams());
+
         labelToggle = new ToggleButton(this);
-        labelToggle.setTextOn("Labels ON");
-        labelToggle.setTextOff("Labels OFF");
+        labelToggle.setTextOn("Labels: ON");
+        labelToggle.setTextOff("Labels: OFF");
         labelToggle.setChecked(showLabels);
         labelToggle.setTextColor(0xFFFFFFFF);
         labelToggle.setBackgroundColor(0xFF4fc3f7);
@@ -212,55 +207,8 @@ public class WiFi3DActivity extends AppCompatActivity {
             showLabels = isChecked;
             updateNetworkLabels();
         });
-        
-        LinearLayout.LayoutParams toggleParams = new LinearLayout.LayoutParams(
-                0,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                0.4f
-        );
-        toggleParams.setMargins(0, 0, 10, 0);
-        labelToggle.setLayoutParams(toggleParams);
-        labelRow.addView(labelToggle);
-        
-        // Label mode spinner
-        labelModeSpinner = new Spinner(this);
-        String[] modes = {"Network Names", "Signal Strength", "Security Type", "WiFi Channel"};
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, 
-                android.R.layout.simple_spinner_dropdown_item, modes);
-        labelModeSpinner.setAdapter(adapter);
-        labelModeSpinner.setSelection(0);
-        labelModeSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                switch (position) {
-                    case 0: labelMode = WiFiNetwork3D.LabelMode.NAME; break;
-                    case 1: labelMode = WiFiNetwork3D.LabelMode.SIGNAL; break;
-                    case 2: labelMode = WiFiNetwork3D.LabelMode.SECURITY; break;
-                    case 3: labelMode = WiFiNetwork3D.LabelMode.CHANNEL; break;
-                }
-                updateNetworkLabels();
-            }
-            
-            @Override
-            public void onNothingSelected(AdapterView<?> parent) {}
-        });
-        
-        LinearLayout.LayoutParams spinnerParams = new LinearLayout.LayoutParams(
-                0,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                0.6f
-        );
-        labelModeSpinner.setLayoutParams(spinnerParams);
-        labelRow.addView(labelModeSpinner);
-        
-        panel.addView(labelRow);
-        
-        // Second row: Band filter controls
-        LinearLayout bandRow = new LinearLayout(this);
-        bandRow.setOrientation(LinearLayout.HORIZONTAL);
-        bandRow.setPadding(5, 5, 5, 5);
-        
-        // 2.4GHz toggle
+        panel.addView(labelToggle, overlayButtonParams());
+
         band24Toggle = new ToggleButton(this);
         band24Toggle.setTextOn("2.4GHz ON");
         band24Toggle.setTextOff("2.4GHz OFF");
@@ -271,17 +219,8 @@ public class WiFi3DActivity extends AppCompatActivity {
             show24GHz = isChecked;
             filterAndUpdateNetworks();
         });
-        
-        LinearLayout.LayoutParams bandToggleParams = new LinearLayout.LayoutParams(
-                0,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                0.5f
-        );
-        bandToggleParams.setMargins(0, 0, 5, 0);
-        band24Toggle.setLayoutParams(bandToggleParams);
-        bandRow.addView(band24Toggle);
-        
-        // 5GHz toggle
+        panel.addView(band24Toggle, overlayButtonParams());
+
         band5Toggle = new ToggleButton(this);
         band5Toggle.setTextOn("5GHz ON");
         band5Toggle.setTextOff("5GHz OFF");
@@ -292,48 +231,142 @@ public class WiFi3DActivity extends AppCompatActivity {
             show5GHz = isChecked;
             filterAndUpdateNetworks();
         });
-        
-        bandToggleParams.setMargins(5, 0, 0, 0);
-        band5Toggle.setLayoutParams(bandToggleParams);
-        bandRow.addView(band5Toggle);
-        
-        panel.addView(bandRow);
-        
-        // Third row: Action buttons
-        LinearLayout buttonRow = new LinearLayout(this);
-        buttonRow.setOrientation(LinearLayout.HORIZONTAL);
-        buttonRow.setPadding(5, 5, 5, 5);
-        
-        // Refresh button
-        refreshButton = new Button(this);
-        refreshButton.setText("Refresh WiFi");
-        refreshButton.setTextColor(0xFFFFFFFF);
-        refreshButton.setBackgroundColor(0xFF4fc3f7);
+        panel.addView(band5Toggle, overlayButtonParams());
+
+        refreshButton = createOverlayButton("Refresh Data", 0xFF4fc3f7);
         refreshButton.setOnClickListener(v -> scanWiFi());
-        
-        LinearLayout.LayoutParams btnParams = new LinearLayout.LayoutParams(
-                0,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                1.0f
-        );
-        btnParams.setMargins(5, 0, 5, 0);
-        refreshButton.setLayoutParams(btnParams);
-        buttonRow.addView(refreshButton);
-        
-        // Back button
-        Button backButton = new Button(this);
-        backButton.setText("Back");
-        backButton.setTextColor(0xFFFFFFFF);
-        backButton.setBackgroundColor(0xFF666666);
+        panel.addView(refreshButton, overlayButtonParams());
+
+        Button backButton = createOverlayButton("Back", 0xFF666666);
         backButton.setOnClickListener(v -> finish());
-        backButton.setLayoutParams(btnParams);
-        buttonRow.addView(backButton);
-        
-        panel.addView(buttonRow);
-        
+        panel.addView(backButton, overlayButtonParams());
+
         return panel;
     }
-    
+
+    private LinearLayout createLegendPanel() {
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(16, 16, 16, 16);
+        panel.setBackgroundColor(0xCC000000);
+
+        TextView title = createOverlayText("Signal Strength");
+        title.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        panel.addView(title);
+        panel.addView(createLegendRow(0xFF00FF00, "Excellent (-30 to -50 dBm)"));
+        panel.addView(createLegendRow(0xFF7FFF00, "Good (-50 to -60 dBm)"));
+        panel.addView(createLegendRow(0xFFFFFF00, "Fair (-60 to -70 dBm)"));
+        panel.addView(createLegendRow(0xFFFFA500, "Weak (-70 to -80 dBm)"));
+        panel.addView(createLegendRow(0xFFFF0000, "Very Weak (< -80 dBm)"));
+        return panel;
+    }
+
+    private LinearLayout createLegendRow(int color, String labelText) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding(0, 8, 0, 0);
+
+        View swatch = new View(this);
+        android.graphics.drawable.GradientDrawable circle = new android.graphics.drawable.GradientDrawable();
+        circle.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+        circle.setColor(color);
+        swatch.setBackground(circle);
+        LinearLayout.LayoutParams swatchParams = new LinearLayout.LayoutParams(24, 24);
+        swatchParams.setMargins(0, 0, 12, 0);
+        row.addView(swatch, swatchParams);
+
+        TextView label = createOverlayText(labelText);
+        label.setTextSize(11);
+        row.addView(label);
+        return row;
+    }
+
+    private LinearLayout createCollapsiblePanel(String title, View content, boolean startCollapsed) {
+        LinearLayout container = new LinearLayout(this);
+        container.setOrientation(LinearLayout.VERTICAL);
+        container.setBackgroundColor(0xCC000000);
+        container.setPadding(8, 8, 8, 8);
+
+        Button toggle = createOverlayButton(
+                startCollapsed ? title : title + " -",
+                0xFF26364A
+        );
+        toggle.setAllCaps(false);
+        content.setVisibility(startCollapsed ? View.GONE : View.VISIBLE);
+        toggle.setOnClickListener(v -> {
+            boolean willShow = content.getVisibility() != View.VISIBLE;
+            content.setVisibility(willShow ? View.VISIBLE : View.GONE);
+            toggle.setText(willShow ? title + " -" : title);
+        });
+
+        container.addView(toggle, overlayButtonParams());
+        container.addView(content);
+        return container;
+    }
+
+    private Button createOverlayButton(String text, int backgroundColor) {
+        Button button = new Button(this);
+        button.setText(text);
+        button.setTextColor(0xFFFFFFFF);
+        button.setBackgroundColor(backgroundColor);
+        return button;
+    }
+
+    private TextView createOverlayText(String text) {
+        TextView label = new TextView(this);
+        label.setText(text);
+        label.setTextColor(0xFFFFFFFF);
+        label.setTextSize(14);
+        return label;
+    }
+
+    private LinearLayout.LayoutParams overlayButtonParams() {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+        );
+        params.setMargins(0, 0, 0, 8);
+        return params;
+    }
+
+    private FrameLayout.LayoutParams topLeftParams(int left, int top, int width) {
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(width, FrameLayout.LayoutParams.WRAP_CONTENT);
+        params.leftMargin = left;
+        params.topMargin = top;
+        return params;
+    }
+
+    private FrameLayout.LayoutParams topRightParams(int right, int top, int width) {
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(width, FrameLayout.LayoutParams.WRAP_CONTENT);
+        params.gravity = android.view.Gravity.TOP | android.view.Gravity.RIGHT;
+        params.rightMargin = right;
+        params.topMargin = top;
+        return params;
+    }
+
+    private FrameLayout.LayoutParams bottomRightParams(int right, int bottom, int width) {
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(width, FrameLayout.LayoutParams.WRAP_CONTENT);
+        params.gravity = android.view.Gravity.BOTTOM | android.view.Gravity.RIGHT;
+        params.rightMargin = right;
+        params.bottomMargin = bottom;
+        return params;
+    }
+
+    private FrameLayout.LayoutParams bottomLeftParams(int left, int bottom, int width, int height) {
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(width, height);
+        params.gravity = android.view.Gravity.BOTTOM | android.view.Gravity.LEFT;
+        params.leftMargin = left;
+        params.bottomMargin = bottom;
+        return params;
+    }
+
+    private FrameLayout.LayoutParams bottomCenterParams(int width, int bottom) {
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(width, FrameLayout.LayoutParams.WRAP_CONTENT);
+        params.gravity = android.view.Gravity.BOTTOM | android.view.Gravity.CENTER_HORIZONTAL;
+        params.bottomMargin = bottom;
+        return params;
+    }
+
     private void setupGestures() {
         // Rotation gestures
         gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
@@ -399,6 +432,7 @@ public class WiFi3DActivity extends AppCompatActivity {
     private void stopScanning() {
         isScanning = false;
         scanHandler.removeCallbacksAndMessages(null);
+        compassHandler.removeCallbacksAndMessages(null);
     }
     
     private void scanWiFi() {
@@ -410,6 +444,9 @@ public class WiFi3DActivity extends AppCompatActivity {
                 
                 JSONArray networks = wifiData.getJSONArray("networks");
                 List<WiFiNetwork3D> network3DList = new ArrayList<>();
+                float heading = (orientationSensor != null && orientationSensor.hasOrientation())
+                        ? orientationSensor.getAzimuth()
+                        : 0f;
                 
                 for (int i = 0; i < networks.length(); i++) {
                     JSONObject network = networks.getJSONObject(i);
@@ -425,13 +462,7 @@ public class WiFi3DActivity extends AppCompatActivity {
                     WiFiNetwork3D network3D = new WiFiNetwork3D(ssid, bssid, signal, security, 
                                                                  channel, frequency, band, isConnected);
                     
-                    // Use compass bearing to position network (if available)
-                    if (orientationSensor != null && orientationSensor.hasOrientation()) {
-                        // For now, distribute networks evenly around compass
-                        // TODO: Use actual bearing from triangulation data
-                        float bearing = (360f * i / networks.length());
-                        network3D.updateBearing(bearing);
-                    }
+                    network3D.updateBearing(heading, i, networks.length());
                     
                     network3DList.add(network3D);
                 }
@@ -459,12 +490,15 @@ public class WiFi3DActivity extends AppCompatActivity {
     }
     
     private void startCompassUpdates() {
-        // Update compass at 30 Hz for smooth rotation
-        Handler compassHandler = new Handler(Looper.getMainLooper());
-        compassHandler.postDelayed(new Runnable() {
+        compassHandler.removeCallbacksAndMessages(null);
+        compassUpdateRunnable = new Runnable() {
             @Override
             public void run() {
-                if (isScanning && orientationSensor != null && orientationSensor.hasOrientation()) {
+                if (!isScanning) {
+                    return;
+                }
+
+                if (orientationSensor != null && orientationSensor.hasOrientation()) {
                     float heading = orientationSensor.getAzimuth();
                     String direction = orientationSensor.getCardinalDirection();
                     
@@ -472,16 +506,21 @@ public class WiFi3DActivity extends AppCompatActivity {
                     renderer.updateDeviceHeading(heading);
                     
                     // Update UI
-                    compassText.setText(String.format("Heading: %.0f° %s", heading, direction));
+                    compassText.setText(String.format("Compass heading: %.1f deg %s", heading, direction));
+                    if (compassDialView != null) {
+                        compassDialView.updateHeading(heading, direction);
+                    }
                     
                     // Update label positions as device rotates
                     updateNetworkLabels();
-                    
-                    // Continue updating
-                    compassHandler.postDelayed(this, 33); // ~30 FPS
+                } else if (orientationSensor != null && orientationSensor.sensorsAvailable()) {
+                    compassText.setText("Compass heading: calibrating...");
                 }
+
+                compassHandler.postDelayed(this, 33); // ~30 FPS
             }
-        }, 33);
+        };
+        compassHandler.postDelayed(compassUpdateRunnable, 33);
     }
     
     /**
@@ -497,6 +536,8 @@ public class WiFi3DActivity extends AppCompatActivity {
                 if (network.band.equals("2.4GHz") && show24GHz) {
                     include = true;
                 } else if (network.band.equals("5GHz") && show5GHz) {
+                    include = true;
+                } else if (!network.band.equals("2.4GHz") && !network.band.equals("5GHz")) {
                     include = true;
                 }
                 
@@ -546,6 +587,8 @@ public class WiFi3DActivity extends AppCompatActivity {
                 if (pos.network.band.equals("2.4GHz") && show24GHz) {
                     include = true;
                 } else if (pos.network.band.equals("5GHz") && show5GHz) {
+                    include = true;
+                } else if (!pos.network.band.equals("2.4GHz") && !pos.network.band.equals("5GHz")) {
                     include = true;
                 }
                 
@@ -656,6 +699,72 @@ public class WiFi3DActivity extends AppCompatActivity {
         
         label.setLayoutParams(labelParams);
         labelOverlay.addView(label);
+    }
+
+    private static class CompassDialView extends View {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private float heading = 0f;
+        private String direction = "N";
+
+        public CompassDialView(android.content.Context context) {
+            super(context);
+            setWillNotDraw(false);
+        }
+
+        public void updateHeading(float heading, String direction) {
+            this.heading = heading;
+            this.direction = direction != null ? direction : "";
+            invalidate();
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+
+            float cx = getWidth() / 2f;
+            float cy = getHeight() / 2f;
+            float radius = Math.min(getWidth(), getHeight()) * 0.43f;
+
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(0xCC000000);
+            canvas.drawCircle(cx, cy, radius, paint);
+
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(4f);
+            paint.setColor(0xFF4fc3f7);
+            canvas.drawCircle(cx, cy, radius, paint);
+
+            paint.setStyle(Paint.Style.FILL);
+            paint.setTextAlign(Paint.Align.CENTER);
+            paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+            paint.setTextSize(22f);
+
+            paint.setColor(0xFFFF5252);
+            canvas.drawText("N", cx, cy - radius + 24f, paint);
+            paint.setColor(Color.WHITE);
+            canvas.drawText("S", cx, cy + radius - 12f, paint);
+            canvas.drawText("W", cx - radius + 22f, cy + 8f, paint);
+            canvas.drawText("E", cx + radius - 22f, cy + 8f, paint);
+
+            float headingRad = (float) Math.toRadians(heading - 90f);
+            float needleLength = radius * 0.68f;
+            float endX = cx + needleLength * (float) Math.cos(headingRad);
+            float endY = cy + needleLength * (float) Math.sin(headingRad);
+
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(7f);
+            paint.setColor(0xFFFF5252);
+            canvas.drawLine(cx, cy, endX, endY, paint);
+
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(0xFF4fc3f7);
+            canvas.drawCircle(cx, cy, 8f, paint);
+
+            paint.setTextSize(18f);
+            paint.setTextAlign(Paint.Align.CENTER);
+            paint.setColor(Color.WHITE);
+            canvas.drawText(String.format("%.1f deg %s", heading, direction), cx, cy + 33f, paint);
+        }
     }
     
     @Override

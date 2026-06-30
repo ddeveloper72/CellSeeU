@@ -6,6 +6,8 @@ import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.util.Log;
+import android.view.Surface;
+import android.view.WindowManager;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -22,14 +24,17 @@ import org.json.JSONObject;
  */
 public class OrientationSensor implements SensorEventListener {
     private static final String TAG = "OrientationSensor";
+    private static final float UPRIGHT_Z_RATIO_THRESHOLD = 0.45f;
     
     private SensorManager sensorManager;
+    private WindowManager windowManager;
     private Sensor accelerometer;
     private Sensor magnetometer;
     
     private float[] gravity = new float[3];
     private float[] geomagnetic = new float[3];
     private float[] rotationMatrix = new float[9];
+    private float[] remappedRotationMatrix = new float[9];
     private float[] orientationAngles = new float[3];
     
     private boolean hasGravity = false;
@@ -47,16 +52,17 @@ public class OrientationSensor implements SensorEventListener {
      */
     public OrientationSensor(Context context) {
         sensorManager = (SensorManager) context.getSystemService(Context.SENSOR_SERVICE);
+        windowManager = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
         
         if (sensorManager != null) {
             accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
             magnetometer = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
             
             if (accelerometer == null) {
-                Log.w(TAG, "⚠️ Accelerometer not available");
+                Log.w(TAG, "Accelerometer not available");
             }
             if (magnetometer == null) {
-                Log.w(TAG, "⚠️ Magnetometer not available");
+                Log.w(TAG, "Magnetometer not available");
             }
         }
     }
@@ -66,18 +72,18 @@ public class OrientationSensor implements SensorEventListener {
      */
     public void start() {
         if (sensorManager == null) {
-            Log.e(TAG, "❌ SensorManager not available");
+            Log.e(TAG, "SensorManager not available");
             return;
         }
         
         if (accelerometer != null) {
             sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_UI);
-            Log.d(TAG, "✅ Accelerometer started");
+            Log.d(TAG, "Accelerometer started");
         }
         
         if (magnetometer != null) {
             sensorManager.registerListener(this, magnetometer, SensorManager.SENSOR_DELAY_UI);
-            Log.d(TAG, "✅ Magnetometer started");
+            Log.d(TAG, "Magnetometer started");
         }
     }
     
@@ -87,7 +93,7 @@ public class OrientationSensor implements SensorEventListener {
     public void stop() {
         if (sensorManager != null) {
             sensorManager.unregisterListener(this);
-            Log.d(TAG, "🛑 Orientation sensors stopped");
+            Log.d(TAG, "Orientation sensors stopped");
         }
         hasGravity = false;
         hasGeomagnetic = false;
@@ -116,21 +122,82 @@ public class OrientationSensor implements SensorEventListener {
             boolean success = SensorManager.getRotationMatrix(rotationMatrix, null, gravity, geomagnetic);
             
             if (success) {
-                SensorManager.getOrientation(rotationMatrix, orientationAngles);
+                SensorManager.getOrientation(getDisplayAlignedRotationMatrix(), orientationAngles);
                 
                 // Convert radians to degrees
-                azimuth = (float) Math.toDegrees(orientationAngles[0]);
+                float flatAzimuth = (float) Math.toDegrees(orientationAngles[0]);
                 pitch = (float) Math.toDegrees(orientationAngles[1]);
                 roll = (float) Math.toDegrees(orientationAngles[2]);
                 
                 // Normalize azimuth to 0-360°
-                if (azimuth < 0) {
-                    azimuth += 360f;
-                }
+                azimuth = normalizeDegrees(isDeviceUpright()
+                        ? calculateBackFacingHeading()
+                        : flatAzimuth);
                 
                 lastUpdate = System.currentTimeMillis();
             }
         }
+    }
+
+    private float[] getDisplayAlignedRotationMatrix() {
+        int axisX = SensorManager.AXIS_X;
+        int axisY = SensorManager.AXIS_Y;
+        int rotation = windowManager != null
+                ? windowManager.getDefaultDisplay().getRotation()
+                : Surface.ROTATION_0;
+
+        switch (rotation) {
+            case Surface.ROTATION_90:
+                axisX = SensorManager.AXIS_Y;
+                axisY = SensorManager.AXIS_MINUS_X;
+                break;
+            case Surface.ROTATION_180:
+                axisX = SensorManager.AXIS_MINUS_X;
+                axisY = SensorManager.AXIS_MINUS_Y;
+                break;
+            case Surface.ROTATION_270:
+                axisX = SensorManager.AXIS_MINUS_Y;
+                axisY = SensorManager.AXIS_X;
+                break;
+            case Surface.ROTATION_0:
+            default:
+                break;
+        }
+
+        boolean remapped = SensorManager.remapCoordinateSystem(
+                rotationMatrix,
+                axisX,
+                axisY,
+                remappedRotationMatrix
+        );
+        return remapped ? remappedRotationMatrix : rotationMatrix;
+    }
+
+    private float normalizeDegrees(float degrees) {
+        float normalized = degrees % 360f;
+        return normalized < 0f ? normalized + 360f : normalized;
+    }
+
+    private boolean isDeviceUpright() {
+        float magnitude = (float) Math.sqrt(
+                gravity[0] * gravity[0]
+                        + gravity[1] * gravity[1]
+                        + gravity[2] * gravity[2]
+        );
+        if (magnitude == 0f) {
+            return false;
+        }
+
+        float zRatio = Math.abs(gravity[2]) / magnitude;
+        return zRatio < UPRIGHT_Z_RATIO_THRESHOLD;
+    }
+
+    private float calculateBackFacingHeading() {
+        // R maps device axes into world axes: world X is east, world Y is north.
+        // The user's forward view through an upright screen follows the phone back (-Z).
+        float east = -rotationMatrix[2];
+        float north = -rotationMatrix[5];
+        return (float) Math.toDegrees(Math.atan2(east, north));
     }
     
     @Override
@@ -150,7 +217,7 @@ public class OrientationSensor implements SensorEventListener {
                 accuracyStr = "HIGH";
                 break;
         }
-        Log.d(TAG, "📊 " + sensor.getName() + " accuracy: " + accuracyStr);
+        Log.d(TAG, "" + sensor.getName() + " accuracy: " + accuracyStr);
     }
     
     /**
@@ -218,7 +285,7 @@ public class OrientationSensor implements SensorEventListener {
             json.put("has_orientation", hasOrientation());
             json.put("timestamp", System.currentTimeMillis());
         } catch (JSONException e) {
-            Log.e(TAG, "❌ Error creating orientation JSON", e);
+            Log.e(TAG, "Error creating orientation JSON", e);
         }
         return json;
     }

@@ -23,20 +23,25 @@ def app():
     flask_app.config['TESTING'] = True
     flask_app.config['DEBUG'] = False
     flask_app.config['ENV'] = 'testing'
+    flask_app.config['WTF_CSRF_ENABLED'] = False
     
     yield flask_app
 
 
 @pytest.fixture(autouse=True)
-def reset_rate_limits():
+def reset_api_state():
     """
-    Reset rate limiting before each test.
+    Reset in-memory API state before each test.
     
-    Prevents rate limit errors from affecting test results.
-    This runs automatically before every test.
+    Prevents rate limits and uploaded scanner data from leaking
+    between tests.
     """
     import src.dashboard.routes as routes_module
+    from src.services.scanner_state import scanner_state
+    from src.services.signal_mapping import signal_mapping_service
     routes_module._request_counts = {}
+    scanner_state.reset()
+    signal_mapping_service.reset()
     yield
 
 
@@ -124,53 +129,3 @@ def sample_device_location():
         altitude=50.0,
         speed=0.0
     )
-
-
-@pytest.fixture
-def app():
-    """
-    Fixture providing a Flask app instance for testing.
-    
-    Creates a fresh app instance in testing mode with a
-    separate configuration to avoid affecting real data.
-    """
-    from app import app as flask_app
-    
-    flask_app.config['TESTING'] = True
-    flask_app.config['WTF_CSRF_ENABLED'] = False
-    
-    return flask_app
-
-
-@pytest.fixture
-def client(app):
-    """
-    Fixture providing a Flask test client.
-    
-    Use this to make HTTP requests to your Flask routes
-    in tests without running a real server.
-    """
-    return app.test_client()
-
-
-@pytest.fixture
-def mock_opencellid_response():
-    """
-    Fixture providing a mock OpenCellID API response.
-    
-    Use this to test tower location lookups without making
-    real API calls (faster tests, no API key required).
-    """
-    return {
-        'lat': 37.7749,
-        'lon': -122.4194,
-        'range': 500,  # accuracy in meters
-        'samples': 100,
-        'changeable': 1,
-        'radio': 'LTE',
-        'mcc': 310,
-        'net': 260,
-        'area': 45678,
-        'cell': 12345678,
-        'unit': 1
-    }
